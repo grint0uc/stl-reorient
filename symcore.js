@@ -348,7 +348,7 @@ KDTree.prototype._t = function (i) {
 
 /* ------------------------------------------------------------------ BVH over triangles (exact closest point) */
 
-const BVH_LEAF = 4;
+const BVH_LEAF = 8;
 const CP = new Float64Array(3);
 
 /* Ericson, Real-Time Collision Detection §5.1.5. Result in CP. */
@@ -383,6 +383,34 @@ function closestPtTri(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) {
   CP[0] = ax + abx * v + acx * w; CP[1] = ay + aby * v + acy * w; CP[2] = az + abz * v + acz * w;
 }
 
+/* Triangle order along a 30-bit Morton curve of the centroids: 4-pass LSD radix sort, linear time. */
+function mortonOrder(C, n) {
+  let a0 = Infinity, a1 = Infinity, a2 = Infinity, b0 = -Infinity, b1 = -Infinity, b2 = -Infinity;
+  for (let i = 0; i < 3 * n; i += 3) {
+    const x = C[i], y = C[i + 1], z = C[i + 2];
+    if (x < a0) a0 = x; if (x > b0) b0 = x;
+    if (y < a1) a1 = y; if (y > b1) b1 = y;
+    if (z < a2) a2 = z; if (z > b2) b2 = z;
+  }
+  const span = Math.max(b0 - a0, b1 - a1, b2 - a2) || 1, k = 1023.999 / span;
+  const spread = v => { v = (v | (v << 16)) & 0x030000ff; v = (v | (v << 8)) & 0x0300f00f; v = (v | (v << 4)) & 0x030c30c3; return (v | (v << 2)) & 0x09249249; };
+  let key = new Uint32Array(n), idx = new Uint32Array(n);
+  for (let i = 0; i < n; i++) {
+    key[i] = ((spread(((C[3 * i] - a0) * k) | 0) << 2) | (spread(((C[3 * i + 1] - a1) * k) | 0) << 1) | spread(((C[3 * i + 2] - a2) * k) | 0)) >>> 0;
+    idx[i] = i;
+  }
+  let key2 = new Uint32Array(n), idx2 = new Uint32Array(n);
+  const count = new Uint32Array(256);
+  for (let sh = 0; sh < 32; sh += 8) {
+    count.fill(0);
+    for (let i = 0; i < n; i++) count[(key[i] >>> sh) & 255]++;
+    for (let i = 0, sum = 0; i < 256; i++) { const c = count[i]; count[i] = sum; sum += c; }
+    for (let i = 0; i < n; i++) { const d = count[(key[i] >>> sh) & 255]++; key2[d] = key[i]; idx2[d] = idx[i]; }
+    [key, key2] = [key2, key]; [idx, idx2] = [idx2, idx];
+  }
+  return { idx, key };
+}
+
 /* Builds over mesh triangles and permutes mesh.V/N/A/src into BVH order (saves a copy). */
 function BVH(mesh) {
   const n = mesh.n, V = mesh.V;
@@ -393,8 +421,7 @@ function BVH(mesh) {
     C[3 * t + 1] = V[b + 1] + V[b + 4] + V[b + 7];
     C[3 * t + 2] = V[b + 2] + V[b + 5] + V[b + 8];
   }
-  const idx = new Uint32Array(n);
-  for (let i = 0; i < n; i++) idx[i] = i;
+  const { idx, key } = mortonOrder(C, n);
   const cap = n + 2;
   const bmin = new Float32Array(3 * cap), bmax = new Float32Array(3 * cap);
   const left = new Int32Array(cap), start = new Uint32Array(cap), cnt = new Uint8Array(cap);
@@ -404,18 +431,17 @@ function BVH(mesh) {
   while (st.length) {
     const hi = st.pop(), lo = st.pop(), nd = st.pop();
     if (hi - lo <= BVH_LEAF) { left[nd] = -1; start[nd] = lo; cnt[nd] = hi - lo; continue; }
-    // Split axis from the centroid spread (3 floats per triangle); node boxes are filled bottom-up below.
-    let a0 = Infinity, a1 = Infinity, a2 = Infinity, b0 = -Infinity, b1 = -Infinity, b2 = -Infinity;
-    for (let i = lo; i < hi; i++) {
-      const b = 3 * idx[i], x = C[b], y = C[b + 1], z = C[b + 2];
-      if (x < a0) a0 = x; if (x > b0) b0 = x;
-      if (y < a1) a1 = y; if (y > b1) b1 = y;
-      if (z < a2) a2 = z; if (z > b2) b2 = z;
+    // Triangles are in Morton (Z-curve) order: split where the highest differing key bit flips, i.e. at a
+    // spatial mid-plane (index midpoint if keys tie). Boxes are filled bottom-up below.
+    let mid = (lo + hi) >> 1;
+    const x = key[lo] ^ key[hi - 1];
+    if (x) {
+      const bit = 1 << (31 - Math.clz32(x));
+      let a = lo, b = hi - 1;
+      while (a < b) { const m = (a + b) >> 1; if (key[m] & bit) b = m; else a = m + 1; }
+      // Keep the tree from degenerating on lopsided splits.
+      if (a - lo >= (hi - lo) >> 3 && hi - a >= (hi - lo) >> 3) mid = a;
     }
-    const e0 = b0 - a0, e1 = b1 - a1, e2 = b2 - a2;
-    const ax = e0 >= e1 && e0 >= e2 ? 0 : e1 >= e2 ? 1 : 2;
-    const mid = (lo + hi) >> 1;
-    select(idx, lo, hi - 1, mid, C, 3, ax);
     const l = nn; nn += 2;
     left[nd] = l;
     st.push(l, lo, mid, l + 1, mid, hi);
@@ -726,7 +752,7 @@ async function searchPlanes(ctx, unoriented) {
   for (let i = 0; i < seeds.length; i++) {
     progress('Refining candidates', i / seeds.length); await tick();
     const r = refinePlane(seeds[i].n, seeds[i].d, S.s1, kc,
-      { sigma0: 0.02, gamma: 0.65, iters: 40, sigmaMin: 2e-5, minSearch: 2e-3, tolA: 1e-6, tolD: 1e-7 });
+      { sigma0: 0.02, gamma: 0.65, iters: 25, sigmaMin: 2e-5, minSearch: 2e-3, tolA: 1e-6, tolD: 1e-7 });
     r.score = scoreKD(r.n, r.d, S.s1, kd, opt.tauScore);
     t1.push(r);
   }
@@ -739,7 +765,7 @@ async function searchPlanes(ctx, unoriented) {
   const top = uniq1.slice(0, opt.keep);
   for (let i = 0; i < top.length; i++) {
     progress('Polishing on exact surface', i / top.length); await tick();
-    out.push(polish(top[i], ctx, unoriented, null, i ? 12 : 40)); // alternates: short polish, they are only offered
+    out.push(polish(top[i], ctx, unoriented, null, i > 0));
   }
   return dedupeSorted(out);
 }
@@ -752,11 +778,13 @@ function dedupeSorted(out) {
 }
 
 /* Tier 2: robust ICP against the exact surface (BVH closest point), then full evaluation. */
-function polish(seed, ctx, unoriented, lock, iters) {
+/* quick: alternates that are only offered to the user get fewer samples, steps and a tighter search cap. */
+function polish(seed, ctx, unoriented, lock, quick) {
   const { bvh, S, opt } = ctx;
-  const r = refinePlane(seed.n, seed.d, S.s2, bvhCorr(bvh),
-    { sigma0: Math.max(4 * seed.sigma, 2e-4), gamma: 0.5, iters: iters || 40, sigmaMin: 1e-7, minSearch: 1e-4, maxSearch: opt.evalCap, tolA: 1e-8, tolD: 1e-9, lock });
-  const dist = mirrorDistances(r.n, r.d, S.eval, bvh, opt.evalCap);
+  const cap = quick ? opt.evalCap / 2 : opt.evalCap;
+  const r = refinePlane(seed.n, seed.d, quick ? S.s2q : S.s2, bvhCorr(bvh),
+    { sigma0: Math.max(4 * seed.sigma, 2e-4), gamma: 0.5, iters: quick ? 8 : 40, sigmaMin: 1e-7, minSearch: 1e-4, maxSearch: cap, tolA: 1e-8, tolD: 1e-9, lock });
+  const dist = mirrorDistances(r.n, r.d, quick ? S.evalq : S.eval, bvh, cap);
   let sum = 0, sq = 0, mx = 0, inTol = 0, inRel = 0;
   for (let k = 0; k < dist.length; k++) {
     const v = dist[k];
@@ -768,7 +796,7 @@ function polish(seed, ctx, unoriented, lock, iters) {
   return {
     nN: r.n, dN: r.d, score: sum / dist.length, match: inTol / dist.length, matchRel: inRel / dist.length,
     median: sorted[sorted.length >> 1], p95: sorted[Math.floor(0.95 * (sorted.length - 1))],
-    rms: Math.sqrt(sq / dist.length), max: mx, capped: mx >= opt.evalCap, iters: r.iters, unoriented,
+    rms: Math.sqrt(sq / dist.length), max: mx, capped: mx >= cap, iters: r.iters, unoriented,
   };
 }
 
@@ -808,7 +836,7 @@ async function secondPlane(an, c1, options) {
   const kc = kdCorr(kd), t1 = [];
   for (const k of minima.slice(0, 4)) {
     const r = refinePlane(dirs[k], dot3(dirs[k], c), S.s1, kc,
-      { sigma0: 0.02, gamma: 0.65, iters: 40, sigmaMin: 2e-5, minSearch: 2e-3, tolA: 1e-6, tolD: 1e-7, lock });
+      { sigma0: 0.02, gamma: 0.65, iters: 25, sigmaMin: 2e-5, minSearch: 2e-3, tolA: 1e-6, tolD: 1e-7, lock });
     r.score = scoreKD(r.n, r.d, S.s1, kd, opt.tauScore);
     t1.push(r);
   }
@@ -816,7 +844,7 @@ async function secondPlane(an, c1, options) {
   const out = [];
   for (let i = 0; i < Math.min(2, t1.length); i++) {
     progress('Polishing perpendicular plane', i / 2); await tick();
-    out.push(polish(t1[i], ctx, c1.unoriented, lock, i ? 12 : 40));
+    out.push(polish(t1[i], ctx, c1.unoriented, lock, i > 0));
   }
   return dedupeSorted(out).map(cd => toOriginal(cd, mesh, opt));
 }
@@ -838,6 +866,8 @@ async function analyse(tris, options) {
     s1: sampleSurface(mesh, opt.n1, 12),
     s2: sampleSurface(mesh, opt.n2, 13),
     eval: sampleSurface(mesh, opt.nEval, 14),
+    s2q: sampleSurface(mesh, 1500, 16),
+    evalq: sampleSurface(mesh, 4000, 17),
   };
   const kd = new KDTree(sampleSurface(mesh, opt.nKD, 10));
   const kdc = new KDTree(sampleSurface(mesh, opt.nKDc, 15));
@@ -856,7 +886,7 @@ async function analyse(tris, options) {
       const alt = [];
       for (let i = 0; i < cands.length; i++) {
         progress('Re-checking with mixed triangle winding', i / cands.length); await tick();
-        alt.push(polish({ n: cands[i].nN, d: cands[i].dN, sigma: 1e-4 }, ctx, true, null));
+        alt.push(polish({ n: cands[i].nN, d: cands[i].dN, sigma: 1e-4 }, ctx, true, null, i > 0));
       }
       const u = dedupeSorted(alt);
       if (u.length && u[0].score < cands[0].score) cands = u;

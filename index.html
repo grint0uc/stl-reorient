@@ -140,8 +140,12 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
 .drop { position: absolute; inset: 12px; border: 4px dashed var(--accent); display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 85%, transparent); font: 700 2rem/1 var(--font-display); text-transform: uppercase; color: var(--accent); pointer-events: none; }
 .busy { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 78%, transparent); z-index: 5; }
 .busy-card { width: min(440px, calc(100% - 32px)); background: var(--bg); border: 2px solid var(--rule); box-shadow: 8px 8px 0 var(--accent); padding: 18px; display: grid; gap: 12px; }
-.busy-card .display { font-size: 1.9rem; }
-.busy-pct { font: 700 3rem/0.9 var(--font-display); font-variant-numeric: tabular-nums; }
+.busy-kind { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Fixed geometry: title box is always two lines tall (text shrinks to fit), percentage has a fixed width. */
+.busy-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: end; }
+.busy-title { height: 3.8rem; display: flex; align-items: flex-end; overflow: hidden; }
+.busy-title span { font-size: 1.9rem; line-height: 1; overflow-wrap: anywhere; }
+.busy-pct { font: 700 3rem/0.9 var(--font-display); font-variant-numeric: tabular-nums; width: 2.6em; text-align: right; white-space: nowrap; }
 .busy-track { height: 14px; border: 2px solid var(--rule); background: var(--surface-2); }
 .busy-fill { height: 100%; width: 0; background: var(--accent); border-right: 2px solid var(--rule); transition: width .2s linear; }
 .busy-step { font: 12.5px/1.4 var(--font-mono); color: var(--muted); }
@@ -270,8 +274,8 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
       </div>
       <div class="busy" id="busy" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="busy-title">
         <div class="busy-card">
-          <div class="eyebrow muted" id="busy-kind">Analysing</div>
-          <div class="row" style="justify-content:space-between;align-items:flex-end"><span class="display" id="busy-title">Working</span><span class="busy-pct" id="busy-pct">0%</span></div>
+          <div class="eyebrow muted busy-kind" id="busy-kind">Analysing</div>
+          <div class="busy-head"><div class="busy-title display"><span id="busy-title">Working</span></div><span class="busy-pct" id="busy-pct">0%</span></div>
           <div class="busy-track"><div class="busy-fill run" id="busy-fill"></div></div>
           <div class="busy-step" id="busy-step"></div>
         </div>
@@ -342,7 +346,14 @@ function endJob() {
 }
 function showProgress(stage, p) {
   const pct = Math.round(100 * p);
-  $('#busy-title').textContent = stage;
+  const t = $('#busy-title');
+  if (t.textContent !== stage) {
+    t.textContent = stage;
+    // Shrink only if two lines at full size are not enough; the box never changes size.
+    let fs = 1.9;
+    t.style.fontSize = fs + 'rem';
+    while (t.offsetHeight > t.parentNode.clientHeight + 1 && fs > 1) { fs -= 0.1; t.style.fontSize = fs + 'rem'; }
+  }
   $('#busy-pct').textContent = pct + '%';
   $('#busy-fill').style.width = pct + '%';
   $('#topbar').style.width = pct + '%';
