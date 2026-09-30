@@ -403,19 +403,15 @@ function BVH(mesh) {
   const eps = 1e-6;
   while (st.length) {
     const hi = st.pop(), lo = st.pop(), nd = st.pop();
+    if (hi - lo <= BVH_LEAF) { left[nd] = -1; start[nd] = lo; cnt[nd] = hi - lo; continue; }
+    // Split axis from the centroid spread (3 floats per triangle); node boxes are filled bottom-up below.
     let a0 = Infinity, a1 = Infinity, a2 = Infinity, b0 = -Infinity, b1 = -Infinity, b2 = -Infinity;
     for (let i = lo; i < hi; i++) {
-      const b = 9 * idx[i];
-      for (let k = 0; k < 9; k += 3) {
-        const x = V[b + k], y = V[b + k + 1], z = V[b + k + 2];
-        if (x < a0) a0 = x; if (x > b0) b0 = x;
-        if (y < a1) a1 = y; if (y > b1) b1 = y;
-        if (z < a2) a2 = z; if (z > b2) b2 = z;
-      }
+      const b = 3 * idx[i], x = C[b], y = C[b + 1], z = C[b + 2];
+      if (x < a0) a0 = x; if (x > b0) b0 = x;
+      if (y < a1) a1 = y; if (y > b1) b1 = y;
+      if (z < a2) a2 = z; if (z > b2) b2 = z;
     }
-    bmin[3 * nd] = a0 - eps; bmin[3 * nd + 1] = a1 - eps; bmin[3 * nd + 2] = a2 - eps;
-    bmax[3 * nd] = b0 + eps; bmax[3 * nd + 1] = b1 + eps; bmax[3 * nd + 2] = b2 + eps;
-    if (hi - lo <= BVH_LEAF) { left[nd] = -1; start[nd] = lo; cnt[nd] = hi - lo; continue; }
     const e0 = b0 - a0, e1 = b1 - a1, e2 = b2 - a2;
     const ax = e0 >= e1 && e0 >= e2 ? 0 : e1 >= e2 ? 1 : 2;
     const mid = (lo + hi) >> 1;
@@ -423,6 +419,30 @@ function BVH(mesh) {
     const l = nn; nn += 2;
     left[nd] = l;
     st.push(l, lo, mid, l + 1, mid, hi);
+  }
+  // Children are always allocated after their parent, so a reverse sweep sees children first.
+  for (let nd = nn - 1; nd >= 0; nd--) {
+    const b3 = 3 * nd;
+    if (left[nd] < 0) {
+      let a0 = Infinity, a1 = Infinity, a2 = Infinity, b0 = -Infinity, b1 = -Infinity, b2 = -Infinity;
+      for (let i = start[nd], e = i + cnt[nd]; i < e; i++) {
+        const b = 9 * idx[i];
+        for (let k = 0; k < 9; k += 3) {
+          const x = V[b + k], y = V[b + k + 1], z = V[b + k + 2];
+          if (x < a0) a0 = x; if (x > b0) b0 = x;
+          if (y < a1) a1 = y; if (y > b1) b1 = y;
+          if (z < a2) a2 = z; if (z > b2) b2 = z;
+        }
+      }
+      bmin[b3] = a0 - eps; bmin[b3 + 1] = a1 - eps; bmin[b3 + 2] = a2 - eps;
+      bmax[b3] = b0 + eps; bmax[b3 + 1] = b1 + eps; bmax[b3 + 2] = b2 + eps;
+    } else {
+      const l3 = 3 * left[nd], r3 = l3 + 3;
+      for (let k = 0; k < 3; k++) {
+        bmin[b3 + k] = Math.min(bmin[l3 + k], bmin[r3 + k]);
+        bmax[b3 + k] = Math.max(bmax[l3 + k], bmax[r3 + k]);
+      }
+    }
   }
   const V2 = new Float32Array(9 * n), N2 = new Float32Array(3 * n), A2 = new Float64Array(n), S2 = new Uint32Array(n);
   for (let i = 0; i < n; i++) {
@@ -546,7 +566,7 @@ function refinePlane(n0, d0, src, corr, o) {
       B = [t1[0], t1[1], t1[2], t2[0], t2[1], t2[2]];
     }
     const t1x = B[0], t1y = B[1], t1z = B[2], t2x = B[3], t2y = B[4], t2z = B[5];
-    const maxD = Math.max(1.5 * TUKEY * Math.max(sigma, sched), o.minSearch);
+    const maxD = Math.min(Math.max(1.5 * TUKEY * Math.max(sigma, sched), o.minSearch), o.maxSearch || Infinity);
     const maxD2 = maxD * maxD;
     let m = 0;
     for (let i = 0; i < K; i++) {
@@ -651,7 +671,8 @@ const DEF = {
   nCoarse: 400,      // samples per coarse score
   nKD: 40000,        // KD-tree samples (refinement)
   nKDc: 10000,       // KD-tree samples (coarse sweep; smaller tree = cheaper far-off queries)
-  n1: 1500, n2: 4000, nEval: 20000,
+  n1: 1500, n2: 4000, nEval: 12000,
+  evalCap: 0.04,     // mirror distances are searched only this far (fraction of diagonal); beyond = capped
   seeds: 8, keep: 3,
   tauCoarse: 0.05,   // truncation, fraction of bbox diagonal
   tauScore: 0.01,
@@ -718,7 +739,7 @@ async function searchPlanes(ctx, unoriented) {
   const top = uniq1.slice(0, opt.keep);
   for (let i = 0; i < top.length; i++) {
     progress('Polishing on exact surface', i / top.length); await tick();
-    out.push(polish(top[i], ctx, unoriented, null));
+    out.push(polish(top[i], ctx, unoriented, null, i ? 12 : 40)); // alternates: short polish, they are only offered
   }
   return dedupeSorted(out);
 }
@@ -731,11 +752,11 @@ function dedupeSorted(out) {
 }
 
 /* Tier 2: robust ICP against the exact surface (BVH closest point), then full evaluation. */
-function polish(seed, ctx, unoriented, lock) {
+function polish(seed, ctx, unoriented, lock, iters) {
   const { bvh, S, opt } = ctx;
   const r = refinePlane(seed.n, seed.d, S.s2, bvhCorr(bvh),
-    { sigma0: Math.max(4 * seed.sigma, 2e-4), gamma: 0.5, iters: 40, sigmaMin: 1e-7, minSearch: 1e-4, tolA: 1e-8, tolD: 1e-9, lock });
-  const dist = mirrorDistances(r.n, r.d, S.eval, bvh, 0.25);
+    { sigma0: Math.max(4 * seed.sigma, 2e-4), gamma: 0.5, iters: iters || 40, sigmaMin: 1e-7, minSearch: 1e-4, maxSearch: opt.evalCap, tolA: 1e-8, tolD: 1e-9, lock });
+  const dist = mirrorDistances(r.n, r.d, S.eval, bvh, opt.evalCap);
   let sum = 0, sq = 0, mx = 0, inTol = 0, inRel = 0;
   for (let k = 0; k < dist.length; k++) {
     const v = dist[k];
@@ -747,7 +768,7 @@ function polish(seed, ctx, unoriented, lock) {
   return {
     nN: r.n, dN: r.d, score: sum / dist.length, match: inTol / dist.length, matchRel: inRel / dist.length,
     median: sorted[sorted.length >> 1], p95: sorted[Math.floor(0.95 * (sorted.length - 1))],
-    rms: Math.sqrt(sq / dist.length), max: mx, capped: mx >= 0.25, iters: r.iters, unoriented,
+    rms: Math.sqrt(sq / dist.length), max: mx, capped: mx >= opt.evalCap, iters: r.iters, unoriented,
   };
 }
 
@@ -795,7 +816,7 @@ async function secondPlane(an, c1, options) {
   const out = [];
   for (let i = 0; i < Math.min(2, t1.length); i++) {
     progress('Polishing perpendicular plane', i / 2); await tick();
-    out.push(polish(t1[i], ctx, c1.unoriented, lock));
+    out.push(polish(t1[i], ctx, c1.unoriented, lock, i ? 12 : 40));
   }
   return dedupeSorted(out).map(cd => toOriginal(cd, mesh, opt));
 }
@@ -823,10 +844,24 @@ async function analyse(tris, options) {
   const ctx = { mesh, kd, kdc, bvh, S, opt, tick, progress };
   let cands = await searchPlanes(ctx, false);
   // Mixed triangle winding breaks the oriented-normal test; retry unoriented if the match is poor.
-  if (!cands.length || cands[0].matchRel < 0.9) {
-    const alt = await searchPlanes(ctx, true);
-    if (alt.length && (!cands.length || alt[0].score < cands[0].score)) cands = alt;
-  }
+  // Mixed triangle winding breaks the oriented-normal test. Cheap check on the found planes first;
+  // only if ignoring orientation clearly helps, re-polish those same planes unoriented.
+  if (cands.length && cands[0].matchRel < 0.9) {
+    const top = cands[0], sOri = scoreKD(top.nN, top.dN, S.s1, kd, opt.tauScore);
+    kd.unoriented = true;
+    const sUn = scoreKD(top.nN, top.dN, S.s1, kd, opt.tauScore);
+    kd.unoriented = false;
+    if (sUn < 0.8 * sOri) {
+      bvh.unoriented = true;
+      const alt = [];
+      for (let i = 0; i < cands.length; i++) {
+        progress('Re-checking with mixed triangle winding', i / cands.length); await tick();
+        alt.push(polish({ n: cands[i].nN, d: cands[i].dN, sigma: 1e-4 }, ctx, true, null));
+      }
+      const u = dedupeSorted(alt);
+      if (u.length && u[0].score < cands[0].score) cands = u;
+    }
+  } else if (!cands.length) cands = await searchPlanes(ctx, true);
   for (const cd of cands) toOriginal(cd, mesh, opt);
   bvh.unoriented = kd.unoriented = kdc.unoriented = cands.length ? cands[0].unoriented : false;
   return { tris, mesh, bvh, ctx, candidates: cands, ms: Date.now() - t0 };
@@ -932,7 +967,7 @@ async function deviationMap(an, cand, options) {
   const tick = o.tick || (() => undefined), progress = o.progress || (() => {});
   const { mesh, bvh } = an, V = mesh.V, N = mesh.N, L = mesh.L;
   const out = new Float32Array(mesh.nOrig);
-  const n = cand.nN, d = cand.dN, cap = 0.25, cap2 = cap * cap;
+  const n = cand.nN, d = cand.dN, cap = an.ctx.opt.evalCap, cap2 = cap * cap;
   for (let t = 0; t < mesh.n; t++) {
     const b = 9 * t;
     const px = (V[b] + V[b + 3] + V[b + 6]) / 3, py = (V[b + 1] + V[b + 4] + V[b + 7]) / 3, pz = (V[b + 2] + V[b + 5] + V[b + 8]) / 3;

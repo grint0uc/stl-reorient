@@ -17,7 +17,9 @@ Mirror of point p across plane (n, d): S(p) = p − 2(n·p − d)n. The plane mi
 3. Local minima → robust Gauss–Newton ICP on the 3-DOF reflection (2 normal tilts + offset), Tukey IRLS with an
    annealed scale so small decisive features (e.g. a clamp head on a round tube) are not rejected early.
 4. Polish on the exact mesh (BVH, closest point on triangle). Up to 3 distinct candidate planes are reported.
-5. Frame: X = plane normal, Z = in-plane long axis snapped to the principal direction of the face normals,
+5. Optional second plane: best mirror plane locked perpendicular to the first (1-D sweep + constrained ICP),
+   placed on XZ.
+6. Frame: X = plane normal, Z = in-plane long axis snapped to the principal direction of the face normals,
    origin on the plane at bounding-box centre, box min or centroid.
 
 ## Tests

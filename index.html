@@ -6,35 +6,37 @@
 <title>STL Reorient</title>
 <style>
 /* Layout: sticky header with file actions; below it a tool panel (left, scrolls) beside a full-bleed 3D stage.
-   Single dark theme: condensed uppercase display type, hard 2px/4px rules, square corners, one yellow accent. */
+   Single light theme: condensed uppercase display type, hard 2px/4px ink rules, square corners, one yellow accent. */
 :root {
-  --bg: #0a0a0a;
-  --surface: #111113;
-  --surface-2: #18181b;
-  --ink: #fafafa;
-  --ink-soft: #d4d4d8;
-  --muted: #a1a1aa;
-  --line: #2a2a2e;
-  --rule: #fafafa;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --ink: #0a0a0a;
+  --ink-soft: #3f3f46;
+  --muted: #71717a;
+  --line: #e4e4e7;
+  --rule: #0a0a0a;
   --accent: #ffe500;
   --accent-dark: #d9c400;
-  --good: #22c55e;
-  --warn: #f59e0b;
-  --bad: #ef4444;
-  --stage: #0d0d0f;
-  --mesh: #8b8b94;
-  --plane: #ffe500;
-  --plane2: #e4e4e7;
-  --heat-0: #8b8b94;
+  --good: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --band-bg: #0a0a0a;
+  --band-ink: #ffffff;
+  --stage: #f4f4f5;
+  --mesh: #a1a1aa;
+  --plane: #d9c400;
+  --plane2: #0a0a0a;
+  --heat-0: #a1a1aa;
   --heat-1: #f97316;
-  --heat-2: #ef4444;
-  --ax-x: #f0645a;
-  --ax-y: #4fc57a;
-  --ax-z: #6f97f7;
+  --heat-2: #dc2626;
+  --ax-x: #dc2626;
+  --ax-y: #16a34a;
+  --ax-z: #2563eb;
   --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  color-scheme: dark;
+  color-scheme: light;
 }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
@@ -66,7 +68,7 @@ header.top {
 }
 .btn:active { transform: translateY(1px); }
 .btn-primary { background: var(--ink); color: var(--bg); }
-.btn-primary:hover:not(:disabled) { background: var(--accent); color: #0a0a0a; border-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background: var(--accent); color: var(--ink); border-color: var(--accent); }
 .btn-ghost:hover:not(:disabled) { background: var(--ink); color: var(--bg); }
 .btn-sm { min-height: 2.25rem; font-size: 0.9375rem; padding: 0 0.875rem; }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: .35; cursor: not-allowed; }
@@ -87,17 +89,17 @@ header.top {
 .check .t { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.02em; line-height: 1.1; }
 .check .s { font-size: 12.5px; color: var(--muted); }
 
-.band { background: #000; border-top: 4px solid var(--rule); border-bottom: 4px solid var(--rule); padding: 18px 16px; display: grid; gap: 14px; }
+.band { background: var(--band-bg); color: var(--band-ink); border-top: 4px solid var(--rule); border-bottom: 4px solid var(--rule); padding: 18px 16px; display: grid; gap: 14px; }
 .band-row { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 10px; }
 .band .num { font-family: var(--font-display); font-weight: 700; font-size: 2.1rem; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .band .num.sm { font-size: 1.45rem; }
-.band .lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: color-mix(in srgb, var(--ink) 65%, transparent); margin-top: 4px; }
+.band .lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: color-mix(in srgb, var(--band-ink) 65%, transparent); margin-top: 4px; }
 .band-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .band-head .display { font-size: 1.35rem; }
 .chip { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; font-size: 0.75rem; font-weight: 700; padding: 3px 8px; border: 2px solid currentColor; }
 .chip.perfect { background: var(--accent); color: #0a0a0a; border-color: var(--accent); }
-.chip.good { color: var(--good); } .chip.ok { color: var(--warn); } .chip.weak { color: var(--bad); }
-.band .note { font-size: 12.5px; color: color-mix(in srgb, var(--ink) 60%, transparent); border-left: 4px solid var(--accent); padding-left: 10px; }
+.chip.good { color: #4ade80; } .chip.ok { color: #fbbf24; } .chip.weak { color: #f87171; }
+.band .note { font-size: 12.5px; color: color-mix(in srgb, var(--band-ink) 65%, transparent); border-left: 4px solid var(--accent); padding-left: 10px; }
 
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .choices { display: flex; flex-wrap: wrap; }
@@ -136,6 +138,18 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
 .heat input[type="number"] { width: 64px; font: 12px var(--font-mono); background: var(--surface); color: var(--ink); border: 2px solid var(--line); border-radius: 0; padding: 3px 4px; }
 .heat .choices span { padding: 3px 8px; font-size: 0.8rem; }
 .drop { position: absolute; inset: 12px; border: 4px dashed var(--accent); display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 85%, transparent); font: 700 2rem/1 var(--font-display); text-transform: uppercase; color: var(--accent); pointer-events: none; }
+.busy { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 78%, transparent); z-index: 5; }
+.busy-card { width: min(440px, calc(100% - 32px)); background: var(--bg); border: 2px solid var(--rule); box-shadow: 8px 8px 0 var(--accent); padding: 18px; display: grid; gap: 12px; }
+.busy-card .display { font-size: 1.9rem; }
+.busy-pct { font: 700 3rem/0.9 var(--font-display); font-variant-numeric: tabular-nums; }
+.busy-track { height: 14px; border: 2px solid var(--rule); background: var(--surface-2); }
+.busy-fill { height: 100%; width: 0; background: var(--accent); border-right: 2px solid var(--rule); transition: width .2s linear; }
+.busy-step { font: 12.5px/1.4 var(--font-mono); color: var(--muted); }
+.topbar { position: absolute; left: 0; right: 0; bottom: -2px; height: 4px; background: transparent; pointer-events: none; }
+.topbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+@keyframes stripe { to { background-position: 28px 0; } }
+.busy-fill.run { background-image: repeating-linear-gradient(45deg, transparent 0 7px, rgba(10,10,10,.14) 7px 14px); background-size: 28px 14px; animation: stripe .6s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .busy-fill.run { animation: none; } .busy-fill, .topbar i { transition: none; } }
 .nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; pointer-events: none; }
 
 @media (max-width: 760px) {
@@ -164,6 +178,7 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
         <button class="btn btn-primary" id="save" type="button" disabled>Download STL</button>
       </div>
     </div>
+    <div class="topbar" aria-hidden="true"><i id="topbar"></i></div>
   </header>
 
   <div class="work">
@@ -253,6 +268,14 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
         <div class="ramp"></div>
         <div class="ends"><span>0</span><label>≥ <input id="heat-max" type="number" min="0" step="any" inputmode="decimal" value="1"> mm</label></div>
       </div>
+      <div class="busy" id="busy" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="busy-title">
+        <div class="busy-card">
+          <div class="eyebrow muted" id="busy-kind">Analysing</div>
+          <div class="row" style="justify-content:space-between;align-items:flex-end"><span class="display" id="busy-title">Working</span><span class="busy-pct" id="busy-pct">0%</span></div>
+          <div class="busy-track"><div class="busy-fill run" id="busy-fill"></div></div>
+          <div class="busy-step" id="busy-step"></div>
+        </div>
+      </div>
       <div class="drop" id="drop" hidden>Drop STL</div>
       <div class="nogl" id="nogl" hidden>3D view unavailable (three.js did not load). Analysis and download still work.</div>
     </main>
@@ -299,7 +322,40 @@ function tick() {
   });
 }
 const paint = () => { lastYield = 0; return tick(); };
-function progress(stage, f) { setStatus(stage + (f > 0 ? ' ' + Math.round(100 * f) + ' %' : '') + ' …'); }
+/* Overall progress: each pipeline stage owns a slice of the bar. */
+const SLICES = {
+  'Reading file': [0, 0.04], 'Preparing mesh': [0.04, 0.24], 'Scanning plane orientations': [0.24, 0.42],
+  'Refining candidates': [0.42, 0.58], 'Polishing on exact surface': [0.58, 0.95], 'Re-checking with mixed triangle winding': [0.95, 1],
+  'Scanning perpendicular planes': [0, 0.55], 'Polishing perpendicular plane': [0.55, 1], 'Deviation map': [0, 1],
+};
+let job = null;
+function beginJob(kind) {
+  job = { p: 0, t0: performance.now() };
+  $('#busy-kind').textContent = kind;
+  $('#busy').hidden = false;
+  showProgress('Starting', 0);
+}
+function endJob() {
+  job = null;
+  $('#busy').hidden = true;
+  $('#topbar').style.width = '0';
+}
+function showProgress(stage, p) {
+  const pct = Math.round(100 * p);
+  $('#busy-title').textContent = stage;
+  $('#busy-pct').textContent = pct + '%';
+  $('#busy-fill').style.width = pct + '%';
+  $('#topbar').style.width = pct + '%';
+  $('#busy').setAttribute('aria-valuenow', pct);
+  $('#busy-step').textContent = ((performance.now() - job.t0) / 1000).toFixed(1) + ' s elapsed';
+}
+function progress(stage, f) {
+  setStatus(stage + (f > 0 ? ' ' + Math.round(100 * f) + ' %' : '') + ' …');
+  if (!job) return;
+  const r = SLICES[stage] || [job.p, job.p];
+  job.p = Math.max(job.p, r[0] + (r[1] - r[0]) * (f || 0));
+  showProgress(stage, job.p);
+}
 function setBusy(b) {
   st.busy = b;
   document.querySelectorAll('.panel button, .panel input:not(#use-p1), .stage input, #save').forEach(el => { el.disabled = b; });
@@ -335,6 +391,7 @@ function initGL() {
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.05, flatShading: true, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
   const mesh = new THREE.Mesh(geom, mat);
+  mesh.matrixAutoUpdate = false;
   const plane = makePlane(new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2), css('--plane'));          // YZ
   const planeXZ = makePlane(new THREE.PlaneGeometry(1, 1).rotateX(Math.PI / 2), css('--plane2'));       // XZ
   const planeXY = makePlane(new THREE.PlaneGeometry(1, 1), css('--plane2'));                            // XY
@@ -347,6 +404,7 @@ function initGL() {
   const loop = () => {
     requestAnimationFrame(loop);
     const moved = controls.update();
+    if (G.anim) stepAnim();
     if (moved || G.dirty) {
       key.position.copy(camera.position); key.target.position.copy(controls.target);
       renderer.render(scene, camera); G.dirty = false;
@@ -400,13 +458,39 @@ function buildAxes() {
     g.add(line, sp);
   });
 }
-function updateGeometry() {
+/* Rigid pose animation: slerp the rotation and slide the part's centre, so it turns about itself into place. */
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function poseTo(M, fromInput) {
+  const Mb = new THREE.Matrix4().set(...M);
+  const c = new THREE.Vector3(...st.an.mesh.c0);
+  const Ma = fromInput ? new THREE.Matrix4() : G.mesh.matrix.clone();
+  const qa = new THREE.Quaternion().setFromRotationMatrix(Ma), qb = new THREE.Quaternion().setFromRotationMatrix(Mb);
+  const pb = c.clone().applyMatrix4(Mb), pa = fromInput ? pb.clone() : c.clone().applyMatrix4(Ma);
+  const dur = reduceMotion ? 0 : fromInput ? 1100 : 650;
+  G.anim = { qa, qb, pa, pb, c, Mb, t0: performance.now(), dur };
+  stepAnim();
+}
+function stepAnim() {
+  const a = G.anim, s = a.dur ? Math.min(1, (performance.now() - a.t0) / a.dur) : 1;
+  if (s >= 1) { G.mesh.matrix.copy(a.Mb); G.anim = null; }
+  else {
+    const e = s < 0.5 ? 4 * s * s * s : 1 - Math.pow(-2 * s + 2, 3) / 2;
+    const q = a.qa.clone().slerp(a.qb, e), p = a.pa.clone().lerp(a.pb, e), v = a.c.clone().applyQuaternion(q);
+    G.mesh.matrix.makeRotationFromQuaternion(q).setPosition(p.x - v.x, p.y - v.y, p.z - v.z);
+  }
+  G.mesh.matrixWorldNeedsUpdate = true;
+  G.dirty = true;
+}
+function updateGeometry(fromInput) {
   if (!G.renderer) return;
-  const pos = S.transform(st.tris, st.fr.M);
-  G.geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  G.geom.deleteAttribute('normal');
-  G.geom.computeVertexNormals();
-  G.geom.computeBoundingSphere();
+  if (G.geomFor !== st.tris) {
+    G.geom.setAttribute('position', new THREE.BufferAttribute(st.tris, 3));
+    G.geom.deleteAttribute('normal');
+    G.geom.computeVertexNormals();
+    G.geom.computeBoundingSphere();
+    G.geomFor = st.tris;
+  }
+  poseTo(st.fr.M, fromInput);
   const e = st.fr.ext, k = 1.14;
   const sx = (e[0][1] - e[0][0]) * k || 1, sy = (e[1][1] - e[1][0]) * k || 1, sz = (e[2][1] - e[2][0]) * k || 1;
   const cx = (e[0][0] + e[0][1]) / 2, cy = (e[1][0] + e[1][1]) / 2, cz = (e[2][0] + e[2][1]) / 2;
@@ -432,8 +516,9 @@ function setView(kind) {
   const mx = 0.07 * (e[0][1] - e[0][0]), my = 0.07 * (e[1][1] - e[1][0]), mz = 0.07 * (e[2][1] - e[2][0]);
   const lo = [Math.min(e[0][0] - mx, 0), Math.min(e[1][0] - my, 0), Math.min(e[2][0] - mz, 0)];
   const hi = [Math.max(e[0][1] + mx, ax), Math.max(e[1][1] + my, ax), Math.max(e[2][1] + mz, ax)];
-  const c = new THREE.Vector3((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
-  const r = 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 0.92 || 1;
+  // Views orbit the origin; radius = farthest corner of that box from the origin.
+  const c = new THREE.Vector3(0, 0, 0);
+  const r = 0.85 * Math.hypot(Math.max(-lo[0], hi[0]), Math.max(-lo[1], hi[1]), Math.max(-lo[2], hi[2])) || 1;
   const dist = (r / Math.sin((Math.min(G.camera.fov, G.camera.fov * G.camera.aspect) * Math.PI) / 360)) * 1.02;
   const dirs = { iso: [1, -1.25, 0.8], x: [1, 0, 0], y: [0, -1, 0], z: [0, -0.002, 1] };
   const d = kind === 'keep' ? G.camera.position.clone().sub(G.controls.target).normalize() : new THREE.Vector3(...dirs[kind]).normalize();
@@ -465,11 +550,11 @@ async function setHeat(on) {
   if (!G.renderer) return;
   const cand = heatCand();
   if (on && cand && !st.heat[heatKey()]) {
-    setBusy(true);
+    setBusy(true); beginJob('Colouring deviations');
     try {
       st.heat[heatKey()] = await S.deviationMap(st.an, cand, { tick, progress });
       setStatus('Deviation map ready. Warm colours show where the mirror image misses the surface.');
-    } finally { setBusy(false); }
+    } finally { endJob(); setBusy(false); }
   }
   applyMaterial();
 }
@@ -525,17 +610,17 @@ function recompute(refit) {
   const second = st.p2on ? st.p2[st.sel] : null;
   st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin, second });
   renderPlacement();
-  updateGeometry();
+  updateGeometry(refit);
   setView(refit ? 'iso' : 'keep');
 }
 async function ensurePlane2() {
   if (!st.p2on || st.p2[st.sel]) return;
-  setBusy(true);
+  setBusy(true); beginJob('Finding plane 2');
   try {
     const r = await S.secondPlane(st.an, st.an.candidates[st.sel], { tick, progress });
     st.p2[st.sel] = r[0] || null;
     setStatus(r[0] ? 'Plane 2 found.' : 'No perpendicular plane found.', !r[0]);
-  } finally { setBusy(false); }
+  } finally { endJob(); setBusy(false); }
 }
 async function selectCand(i) {
   st.sel = i;
@@ -557,11 +642,12 @@ async function togglePlane2(on) {
 /* ---------- load + analyse */
 async function analyseBuffer(buf, name, note) {
   if (st.busy) return;
-  setBusy(true);
+  setBusy(true); beginJob('Analysing ' + name);
   try {
-    setStatus('Reading ' + name + ' …'); await paint();
+    progress('Reading file', 0); await paint();
     const tris = S.parseSTL(buf);
     const an = await S.analyse(tris, { tick, progress });
+    endJob();
     Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, heat: {}, p2: {} });
     $('#file-name').textContent = name;
     $('#file-meta').textContent = `${fmtInt(tris.length / 9)} triangles` + (note ? ' · ' + note : '');
@@ -574,7 +660,7 @@ async function analyseBuffer(buf, name, note) {
     if (G.heatOn) await setHeat(true);
   } catch (e) {
     setStatus('Could not analyse ' + name + ': ' + (e && e.message ? e.message : e), true);
-  } finally { setBusy(false); }
+  } finally { endJob(); setBusy(false); }
 }
 async function openFile(file) {
   if (!file) return;
