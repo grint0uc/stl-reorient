@@ -201,21 +201,21 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
       <div class="band" id="sec-band" hidden>
         <div class="band-head"><span class="display">Plane 1</span><span class="chip" id="chip1">—</span></div>
         <div class="band-row">
-          <div><div class="num" id="b1-match">—</div><div class="lab">≤ 1 mm</div></div>
+          <div><div class="num" id="b1-p95">—</div><div class="lab">95 % within mm</div></div>
           <div><div class="num sm" id="b1-med">—</div><div class="lab">median mm</div></div>
-          <div><div class="num sm" id="b1-p95">—</div><div class="lab">P95 mm</div></div>
+          <div><div class="num sm" id="b1-match">—</div><div class="lab">≤ 1 mm</div></div>
           <div><div class="num sm" id="b1-max">—</div><div class="lab">max mm</div></div>
         </div>
         <div id="band2" hidden>
           <div class="band-head" style="margin-bottom:14px"><span class="display">Plane 2</span><span class="chip" id="chip2">—</span></div>
           <div class="band-row">
-            <div><div class="num" id="b2-match">—</div><div class="lab">≤ 1 mm</div></div>
-            <div><div class="num sm" id="b2-med">—</div><div class="lab">median mm</div></div>
-            <div><div class="num sm" id="b2-p95">—</div><div class="lab">P95 mm</div></div>
+            <div><div class="num" id="b2-p95">—</div><div class="lab">95 % within mm</div></div>
+          <div><div class="num sm" id="b2-med">—</div><div class="lab">median mm</div></div>
+          <div><div class="num sm" id="b2-match">—</div><div class="lab">≤ 1 mm</div></div>
             <div><div class="num sm" id="b2-max">—</div><div class="lab">max mm</div></div>
           </div>
         </div>
-        <p class="note" style="margin:0">Share of the surface whose mirror image lands within 1 mm of the surface. Under 50 % weak, 50–75 % ok, 75–90 % good, 90 % and up perfect.</p>
+        <p class="note" style="margin:0">Big number: 95 % of the surface mirrors onto itself within this distance (P95). Rated on it: ≤ 0.25 mm perfect, ≤ 1 mm good, ≤ 3 mm ok, above that weak.</p>
       </div>
 
       <div class="blk" id="sec-place" hidden>
@@ -223,6 +223,8 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
         <div class="row">
           <button class="btn btn-ghost btn-sm" id="rot-x" type="button" title="Rotate 90° about X (Z goes to Y). Plane 1 stays on YZ.">Rotate 90° about X</button>
           <button class="btn btn-ghost btn-sm" id="flip-z" type="button" title="Turn 180° about Z (front and back swap). Plane 1 stays on YZ.">Flip 180° about Z</button>
+          <button class="btn btn-ghost btn-sm" id="pick" type="button" aria-pressed="false" title="Click a flat face or a round surface on the model: it is turned so that face's normal, or the round surface's axis, points along Z. Plane 1 stays on YZ.">Align to picked feature</button>
+          <button class="btn btn-ghost btn-sm" id="unpick" type="button" hidden>Clear alignment</button>
         </div>
         <div>
           <div class="field-label" style="margin-bottom:6px">Origin</div>
@@ -295,6 +297,42 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
 const $ = s => document.querySelector(s);
 const S = window.SymCore;
 const st = { tris: null, name: '', an: null, sel: 0, rx: 0, fz: 0, origin: 'bbox', fr: null, heat: {}, heatMax: 1, heatWhich: 1, p2on: false, p2: {}, busy: false };
+/* Heavy work runs in a Web Worker (page never freezes). If workers are unavailable (e.g. opened from file://),
+   the same engine runs on the main thread with cooperative yields. */
+const eng = (() => {
+  let worker = null, seq = 0;
+  const pending = new Map(), local = S.engine();
+  const ready = new Promise(res => {
+    try {
+      const url = new URL('symcore.js', location.href).href;
+      const src = `importScripts(${JSON.stringify(url)});const E=SymCore.engine();onmessage=async e=>{const{id,cmd,args}=e.data;` +
+        `try{const r=await E[cmd](...args,(s,f)=>postMessage({id,progress:[s,f]}));postMessage({id,result:r.value},r.transfer||[])}` +
+        `catch(err){postMessage({id,error:String(err&&err.message||err)})}};`;
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      worker.onmessage = e => {
+        const d = e.data, p = pending.get(d.id);
+        if (!p) return;
+        if (d.progress) { p.onProgress && p.onProgress(...d.progress); return; }
+        pending.delete(d.id);
+        d.error ? p.reject(new Error(d.error)) : p.resolve(d.result);
+      };
+      worker.onerror = () => { // a crash (e.g. out of memory) fails the running calls instead of hanging them
+        worker = null; res(false);
+        for (const p of pending.values()) p.reject(new Error('The background worker stopped (out of memory?).'));
+        pending.clear();
+      };
+      const t = setTimeout(() => { worker = null; res(false); }, 4000);
+      call('ping', []).then(() => { clearTimeout(t); res(true); }, () => { clearTimeout(t); worker = null; res(false); });
+    } catch (e) { worker = null; res(false); }
+  });
+  function call(cmd, args, transfer, onProgress) {
+    if (!worker) return local[cmd](...args, onProgress, tick).then(r => r.value);
+    const id = ++seq;
+    return new Promise((resolve, reject) => { pending.set(id, { resolve, reject, onProgress }); worker.postMessage({ id, cmd, args }, transfer || []); });
+  }
+  ready.then(ok => { document.body.dataset.engine = ok ? 'worker' : 'main-thread'; });
+  return { ready, run: async (cmd, args, transfer, onProgress) => { await ready; return call(cmd, args, transfer, onProgress); } };
+})();
 const downloadsP = window.claude && typeof window.claude.use === 'function' ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
 
 /* ---------- formatting */
@@ -309,8 +347,9 @@ function fmtLen(v) {
 }
 const fmtShort = v => (!Number.isFinite(v) ? '—' : Math.abs(v) < 0.01 ? v.toFixed(4) : Math.abs(v) < 10 ? v.toFixed(3) : v.toFixed(1));
 const fmtInt = n => n.toLocaleString('en-US');
-function rating(m) {
-  return m < 0.5 ? ['weak', 'Weak'] : m < 0.75 ? ['ok', 'OK'] : m < 0.9 ? ['good', 'Good'] : ['perfect', 'Perfect'];
+/* Rated on P95 mirror deviation (mm): a large symmetric region can no longer hide a clearly offset feature. */
+function rating(p95) {
+  return p95 <= 0.25 ? ['perfect', 'Perfect'] : p95 <= 1 ? ['good', 'Good'] : p95 <= 3 ? ['ok', 'OK'] : ['weak', 'Weak'];
 }
 
 /* ---------- status + yielding */
@@ -496,8 +535,7 @@ function updateGeometry(fromInput) {
   if (!G.renderer) return;
   if (G.geomFor !== st.tris) {
     G.geom.setAttribute('position', new THREE.BufferAttribute(st.tris, 3));
-    G.geom.deleteAttribute('normal');
-    G.geom.computeVertexNormals();
+    G.geom.deleteAttribute('normal'); // flat shading derives face normals on the GPU
     G.geom.computeBoundingSphere();
     G.geomFor = st.tris;
   }
@@ -563,7 +601,7 @@ async function setHeat(on) {
   if (on && cand && !st.heat[heatKey()]) {
     setBusy(true); beginJob('Colouring deviations');
     try {
-      st.heat[heatKey()] = await S.deviationMap(st.an, cand, { tick, progress });
+      st.heat[heatKey()] = await eng.run('devmap', [cand], null, progress);
       setStatus('Deviation map ready. Warm colours show where the mirror image misses the surface.');
     } finally { endJob(); setBusy(false); }
   }
@@ -572,7 +610,7 @@ async function setHeat(on) {
 
 /* ---------- panel */
 function fillBand(i, c) {
-  const [cls, txt] = rating(c.match);
+  const [cls, txt] = rating(c.p95);
   const chip = $('#chip' + i);
   chip.className = 'chip ' + cls; chip.textContent = txt;
   $(`#b${i}-match`).textContent = (100 * c.match).toFixed(1) + '%';
@@ -596,8 +634,8 @@ function renderPlanes() {
     const lab = document.createElement('label');
     lab.className = 'check';
     lab.innerHTML = `<input type="radio" name="cand" value="${i}" id="cand-${i}"${i === st.sel ? ' checked' : ''}>` +
-      `<span class="t">Candidate ${i + 1} · ${(100 * cd.match).toFixed(1)}%</span>` +
-      `<span class="s">P95 ${fmtLen(cd.p95)} mm${i ? ` · ${ang.toFixed(1)}° from candidate 1` : ' · best fit'}</span>`;
+      `<span class="t">Candidate ${i + 1} · P95 ${fmtShort(cd.p95)} mm</span>` +
+      `<span class="s">${rating(cd.p95)[1]} · ${(100 * cd.match).toFixed(1)} % within 1 mm${i ? ` · ${ang.toFixed(1)}° from candidate 1` : ' · best fit'}</span>`;
     lab.querySelector('input').addEventListener('change', () => selectCand(i));
     box.appendChild(lab);
   });
@@ -608,7 +646,7 @@ function renderPlacement() {
   const rows = [['X', 'x', e[0]], ['Y', 'y', e[1]], ['Z', 'z', e[2]]];
   $('#ext').innerHTML = '<tr><th></th><td>min</td><td>max</td><td>size</td></tr>' +
     rows.map(([t, c, r]) => `<tr><th class="${c}">${t}</th><td>${fmtLen(r[0])}</td><td>${fmtLen(r[1])}</td><td>${fmtLen(r[1] - r[0])}</td></tr>`).join('');
-  $('#place-cap').textContent = 'X = 0 is plane 1' + (p2 ? `, ${p2 === 'XZ' ? 'Y' : 'Z'} = 0 is plane 2 (${p2})` : '') +
+  $('#place-cap').textContent = (st.up && !p2 ? 'Z follows the picked feature. ' : '') + 'X = 0 is plane 1' + (p2 ? `, ${p2 === 'XZ' ? 'Y' : 'Z'} = 0 is plane 2 (${p2})` : '') +
     '. Box min puts the free axes at their minimum, so those values are all positive.';
   const M = st.fr.M;
   const f = v => (v < 0 ? '−' : ' ') + Math.abs(v).toFixed(6);
@@ -619,7 +657,9 @@ function renderPlacement() {
 }
 function recompute(refit) {
   const second = st.p2on ? st.p2[st.sel] : null;
-  st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin, second });
+  st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin, second, up: second ? null : st.up });
+  $('#unpick').hidden = !st.up || !!second;
+  $('#pick').disabled = st.busy || !!second;
   renderPlacement();
   updateGeometry(refit);
   setView(refit ? 'iso' : 'keep');
@@ -628,13 +668,13 @@ async function ensurePlane2() {
   if (!st.p2on || st.p2[st.sel]) return;
   setBusy(true); beginJob('Finding plane 2');
   try {
-    const r = await S.secondPlane(st.an, st.an.candidates[st.sel], { tick, progress });
+    const r = await eng.run('second', [st.sel], null, progress);
     st.p2[st.sel] = r[0] || null;
     setStatus(r[0] ? 'Plane 2 found.' : 'No perpendicular plane found.', !r[0]);
   } finally { endJob(); setBusy(false); }
 }
 async function selectCand(i) {
-  st.sel = i;
+  st.sel = i; st.up = null; // a picked direction belongs to the previous plane
   await ensurePlane2();
   renderPlanes();
   recompute(false);
@@ -657,9 +697,11 @@ async function analyseBuffer(buf, name, note) {
   try {
     progress('Reading file', 0); await paint();
     const tris = S.parseSTL(buf);
-    const an = await S.analyse(tris, { tick, progress });
+    const copy = tris.slice(); // the worker gets its own copy; the page keeps tris for display and export
+    const res = await eng.run('analyse', [copy], [copy.buffer], progress);
+    const an = Object.assign(res, { tris });
     endJob();
-    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, heat: {}, p2: {} });
+    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, up: null, heat: {}, p2: {} });
     $('#file-name').textContent = name;
     $('#file-meta').textContent = `${fmtInt(tris.length / 9)} triangles` + (note ? ' · ' + note : '');
     ['#sec-planes', '#sec-band', '#sec-place', '#sec-detail'].forEach(s => { $(s).hidden = false; });
@@ -708,6 +750,39 @@ $('#open-label').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.
 $('#open-label').addEventListener('click', e => { if (st.busy) e.preventDefault(); });
 $('#rot-x').addEventListener('click', () => { st.rx = (st.rx + 1) & 3; recompute(false); });
 $('#flip-z').addEventListener('click', () => { st.fz ^= 1; recompute(false); });
+function setPick(on) {
+  st.picking = on;
+  $('#pick').setAttribute('aria-pressed', on ? 'true' : 'false');
+  $('#pick').classList.toggle('btn-primary', on);
+  $('#gl').style.cursor = on ? 'crosshair' : '';
+  if (on) setStatus('Click a flat face or a round surface on the model. Esc cancels.');
+}
+$('#pick').addEventListener('click', () => setPick(!st.picking));
+$('#unpick').addEventListener('click', () => { st.up = null; recompute(false); setStatus('Alignment cleared.'); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && st.picking) { setPick(false); setStatus('Picking cancelled.'); } });
+let downAt = null;
+$('#gl').addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
+$('#gl').addEventListener('pointerup', async e => {
+  if (!st.picking || !G.renderer || !downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return; // a drag orbits, a click picks
+  const r = $('#gl').getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), G.camera);
+  const hit = ray.intersectObject(G.mesh, false)[0];
+  if (!hit) { setStatus('Missed the model. Click on its surface, or press Esc.'); return; }
+  const p = hit.point.clone().applyMatrix4(G.mesh.matrix.clone().invert());
+  const t = st.tris, b = 9 * hit.faceIndex;
+  const u = [t[b + 3] - t[b], t[b + 4] - t[b + 1], t[b + 5] - t[b + 2]], v = [t[b + 6] - t[b], t[b + 7] - t[b + 1], t[b + 8] - t[b + 2]];
+  const nr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], nl = Math.hypot(...nr) || 1;
+  const f = await eng.run('feature', [[p.x, p.y, p.z], nr.map(x => x / nl)]);
+  setPick(false);
+  if (f.kind === 'none') { setStatus('No clear flat face or round surface there. Try the middle of a face.', true); return; }
+  const n1 = st.an.candidates[st.sel].n, par = Math.abs(f.dir[0] * n1[0] + f.dir[1] * n1[1] + f.dir[2] * n1[2]);
+  if (par > 0.97) { setStatus('That direction is perpendicular to the mirror plane, so it cannot be turned to Z without breaking YZ.', true); return; }
+  const z = st.fr.R.slice(6, 9), sg = f.dir[0] * z[0] + f.dir[1] * z[1] + f.dir[2] * z[2] < 0 ? -1 : 1; // keep the side that is already up
+  st.up = f.dir.map(x => sg * x); st.rx = 0;
+  recompute(false);
+  setStatus((f.kind === 'flat' ? 'Flat face normal' : 'Axis of the round surface') + ' now points along Z' + (par > 0.05 ? ` (projected into the mirror plane, ${(Math.asin(par) * 180 / Math.PI).toFixed(1)}° removed)` : '') + '.');
+});
 document.querySelectorAll('input[name="origin"]').forEach(r => r.addEventListener('change', () => { st.origin = r.value; recompute(false); }));
 $('#use-p2').addEventListener('change', e => { if (st.an) togglePlane2(e.target.checked); });
 $('#save').addEventListener('click', save);

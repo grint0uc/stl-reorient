@@ -931,14 +931,17 @@ function frame(an, cand, opt) {
   opt = opt || {};
   const mesh = an.mesh, tris = an.tris, n = cand.n, d = cand.d;
   const n2 = opt.second ? opt.second.n : null;
-  let u = n2 ? norm3(cross3(n, n2)) : cand.axis || (cand.axis = inPlaneAxis(mesh, n));
+  let u;
+  if (n2) u = norm3(cross3(n, n2));
+  else if (opt.up) { const k = dot3(opt.up, n); u = norm3([opt.up[0] - k * n[0], opt.up[1] - k * n[1], opt.up[2] - k * n[2]]); }
+  else u = cand.axis || (cand.axis = inPlaneAxis(mesh, n));
   const cO = [mesh.c0[0] + mesh.L * mesh.centroid[0], mesh.c0[1] + mesh.L * mesh.centroid[1], mesh.c0[2] + mesh.L * mesh.centroid[2]];
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < tris.length; i += 3) {
     const s = u[0] * tris[i] + u[1] * tris[i + 1] + u[2] * tris[i + 2];
     if (s < lo) lo = s; if (s > hi) hi = s;
   }
-  if (dot3(u, cO) < 0.5 * (lo + hi)) u = [-u[0], -u[1], -u[2]];
+  if (!opt.up && dot3(u, cO) < 0.5 * (lo + hi)) u = [-u[0], -u[1], -u[2]]; // a picked direction keeps its sign
   let R = null, best = -Infinity;
   for (const sg of [1, -1]) {
     const X = [sg * n[0], sg * n[1], sg * n[2]], Z = u, Y = cross3(Z, X);
@@ -1009,6 +1012,53 @@ async function deviationMap(an, cand, options) {
     if ((t & 8191) === 8191) { progress('Deviation map', t / mesh.n); await tick(); }
   }
   return out;
+}
+
+/* Direction of the surface feature under a picked point (original coords p, face normal nrm).
+   Flat patch → its normal. Otherwise, if the local normals all lie in a plane (cylinder, cone, extrusion)
+   → the axis they are perpendicular to. Uses triangles within rFrac·diagonal of the point. */
+function pickFeature(an, p, nrm, rFrac) {
+  const m = an.mesh, L = m.L, V = m.V, N = m.N, A = m.A;
+  const q = [(p[0] - m.c0[0]) / L, (p[1] - m.c0[1]) / L, (p[2] - m.c0[2]) / L], r = rFrac || 0.03, r2 = r * r;
+  const T = [0, 0, 0, 0, 0, 0, 0, 0, 0], sum = [0, 0, 0];
+  let aAll = 0, aFlat = 0, count = 0;
+  for (let t = 0; t < m.n; t++) {
+    const b = 9 * t;
+    const dx = (V[b] + V[b + 3] + V[b + 6]) / 3 - q[0], dy = (V[b + 1] + V[b + 4] + V[b + 7]) / 3 - q[1], dz = (V[b + 2] + V[b + 5] + V[b + 8]) / 3 - q[2];
+    if (dx * dx + dy * dy + dz * dz > r2) continue;
+    const x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2], c = x * nrm[0] + y * nrm[1] + z * nrm[2];
+    if (Math.abs(c) < 0.2) continue; // other side of an edge, not the clicked patch
+    const a = A[t], sg = c < 0 ? -1 : 1;
+    aAll += a; count++;
+    if (Math.abs(c) > 0.97) { aFlat += a; sum[0] += sg * a * x; sum[1] += sg * a * y; sum[2] += sg * a * z; }
+    T[0] += a * x * x; T[1] += a * x * y; T[2] += a * x * z; T[4] += a * y * y; T[5] += a * y * z; T[8] += a * z * z;
+  }
+  if (!count) return { kind: 'none', count };
+  if (aFlat > 0.85 * aAll) return { kind: 'flat', dir: norm3(sum), count };
+  T[3] = T[1]; T[6] = T[2]; T[7] = T[5];
+  const e = eigSym3(T), tr = e[0].val + e[1].val + e[2].val;
+  if (e[2].val < 0.08 * tr) return { kind: 'round', dir: norm3(e[2].vec), count };
+  return { kind: 'none', count };
+}
+
+/* Stateful wrapper so the heavy work can live in a Web Worker: every call returns { value, transfer }. */
+function engine() {
+  let an = null;
+  return {
+    async ping() { return { value: 'ok' }; },
+    async analyse(tris, progress, tick) {
+      an = await analyse(tris, { progress, tick });
+      for (const c of an.candidates) c.axis = inPlaneAxis(an.mesh, c.n);
+      const m = an.mesh;
+      return { value: { mesh: { c0: m.c0, L: m.L, centroid: m.centroid, cov: m.cov, n: m.n, nOrig: m.nOrig }, candidates: an.candidates, ms: an.ms } };
+    },
+    async second(i, progress, tick) { return { value: await secondPlane(an, an.candidates[i], { progress, tick }) }; },
+    async devmap(cand, progress, tick) {
+      const v = await deviationMap(an, cand, { progress, tick });
+      return { value: v, transfer: [v.buffer] };
+    },
+    async feature(p, nrm) { return { value: pickFeature(an, p, nrm) }; },
+  };
 }
 
 /* ------------------------------------------------------------------ synthetic seat post (demo + tests) */
@@ -1092,7 +1142,7 @@ function rigid(tris, R, t) {
 
 const SymCore = {
   parseSTL, writeSTL, zipOne, crc32,
-  analyse, secondPlane, frame, transform, deviationMap,
+  analyse, secondPlane, frame, transform, deviationMap, pickFeature, engine,
   seatPost, rotationXYZ, rigid,
   _internal: { prepareMesh, sampleSurface, KDTree, BVH, eigSym3, refinePlane, mirrorDistances, fibHemisphere, closestPtTri, CP },
 };

@@ -4,7 +4,12 @@ Finds the mirror (reflective-symmetry) plane of an STL and moves the part so tha
 Rotation + translation only; the mesh is never mirrored.
 
 Open `index.html` in a browser (three.js loads from a CDN), drop an STL, download the result.
-Everything runs locally in the page.
+Everything runs locally in the page; the analysis runs in a Web Worker so the page stays responsive.
+
+- Symmetry score: P95 mirror deviation (95 % of the surface mirrors within this distance).
+  ≤ 0.25 mm perfect, ≤ 1 mm good, ≤ 3 mm ok, above that weak.
+- Align to picked feature: click a flat face (its normal) or a round surface (its axis) and it is turned onto Z,
+  keeping the mirror plane on YZ.
 
 ## Algorithm (`symcore.js`)
 
