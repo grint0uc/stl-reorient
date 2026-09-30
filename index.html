@@ -147,13 +147,13 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
 .busy-title span { font-size: 1.9rem; line-height: 1; overflow-wrap: anywhere; }
 .busy-pct { font: 700 3rem/0.9 var(--font-display); font-variant-numeric: tabular-nums; width: 2.6em; text-align: right; white-space: nowrap; }
 .busy-track { height: 14px; border: 2px solid var(--rule); background: var(--surface-2); }
-.busy-fill { height: 100%; width: 0; background: var(--accent); border-right: 2px solid var(--rule); transition: width .2s linear; }
+.busy-fill { height: 100%; width: 0; background: var(--accent); border-right: 2px solid var(--rule); }
 .busy-step { font: 12.5px/1.4 var(--font-mono); color: var(--muted); }
 .topbar { position: absolute; left: 0; right: 0; bottom: -2px; height: 4px; background: transparent; pointer-events: none; }
-.topbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+.topbar i { display: block; height: 100%; width: 0; background: var(--accent); }
 @keyframes stripe { to { background-position: 28px 0; } }
 .busy-fill.run { background-image: repeating-linear-gradient(45deg, transparent 0 7px, rgba(10,10,10,.14) 7px 14px); background-size: 28px 14px; animation: stripe .6s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .busy-fill.run { animation: none; } .busy-fill, .topbar i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .busy-fill.run { animation: none; } }
 .nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; pointer-events: none; }
 
 @media (max-width: 760px) {
