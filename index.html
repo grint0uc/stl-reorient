@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>STL Reorient</title>
+<style>
+/* Layout: instrument panel (left, scrolls on its own) beside a full-bleed 3D stage; stacks on phones. */
+:root {
+  --bg: #eef1f4;
+  --panel: #f9fafb;
+  --ink: #17212b;
+  --muted: #5b6773;
+  --rule: #d5dce3;
+  --accent: #1f4fd1;
+  --accent-ink: #ffffff;
+  --plane: #7a4fd8;
+  --stage: #e4e8ec;
+  --mesh: #9eabb8;
+  --good: #1d7a4c;
+  --warn: #a2650a;
+  --bad: #b4382a;
+  --heat-0: #9eabb8;
+  --heat-1: #e6a23a;
+  --heat-2: #c8412f;
+  --ax-x: #d2443a;
+  --ax-y: #2f9a55;
+  --ax-z: #2f66d8;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+  --font-body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1419; --panel: #151b21; --ink: #e3e9ee; --muted: #93a0ab; --rule: #27313a;
+    --accent: #7899f6; --accent-ink: #0a1022; --plane: #a98bff; --stage: #0b0f13; --mesh: #7d8a97;
+    --good: #4cbf89; --warn: #e2a645; --bad: #ef6d5b;
+    --heat-0: #7d8a97; --heat-1: #e9a847; --heat-2: #f0604c;
+    --ax-x: #f0645a; --ax-y: #4fc57a; --ax-z: #6f97f7;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1419; --panel: #151b21; --ink: #e3e9ee; --muted: #93a0ab; --rule: #27313a;
+  --accent: #7899f6; --accent-ink: #0a1022; --plane: #a98bff; --stage: #0b0f13; --mesh: #7d8a97;
+  --good: #4cbf89; --warn: #e2a645; --bad: #ef6d5b;
+  --heat-0: #7d8a97; --heat-1: #e9a847; --heat-2: #f0604c;
+  --ax-x: #f0645a; --ax-y: #4fc57a; --ax-z: #6f97f7;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+.app { display: grid; grid-template-columns: minmax(300px, 360px) 1fr; height: 100%; }
+.panel {
+  background: var(--panel); border-right: 1px solid var(--rule);
+  overflow-y: auto; padding: 20px 20px 28px; display: flex; flex-direction: column; gap: 22px;
+  min-width: 0;
+}
+.brand h1 {
+  font: 600 26px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; margin: 0;
+}
+.brand p { margin: 6px 0 0; color: var(--muted); font-size: 14px; text-wrap: balance; }
+section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+h2 {
+  font: 600 13px/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--rule);
+}
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button, .btn {
+  font: 500 14px/1 var(--font-body); color: var(--ink); background: transparent;
+  border: 1px solid var(--rule); border-radius: 6px; padding: 9px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+button:hover, .btn:hover { border-color: var(--muted); }
+button:focus-visible, .btn:focus-visible, input:focus-visible + span, select:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+button.primary, .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: default; }
+.file-name { font-weight: 600; overflow-wrap: anywhere; }
+.meta { color: var(--muted); font-size: 13px; }
+.status { font: 13px/1.4 var(--font-data); color: var(--muted); min-height: 1.4em; }
+.status.error { color: var(--bad); }
+.headline { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.big { font: 500 34px/1 var(--font-data); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.pill {
+  font: 600 12px/1 var(--font-display); letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 5px 8px 4px; border-radius: 999px; border: 1px solid currentColor;
+}
+.pill.good { color: var(--good); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+.caption { color: var(--muted); font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.stat b { display: block; font: 600 11px/1 var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+.stat span { font: 500 14px/1.1 var(--font-data); font-variant-numeric: tabular-nums; }
+.mono { font: 12.5px/1.55 var(--font-data); font-variant-numeric: tabular-nums; overflow-x: auto; white-space: pre; }
+.cands { display: flex; flex-direction: column; gap: 6px; }
+.cand {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center;
+  border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; cursor: pointer;
+}
+.cand:has(input:checked) { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.cand input { margin: 0; accent-color: var(--accent); grid-row: span 2; }
+.cand .t { font: 500 14px/1.2 var(--font-data); font-variant-numeric: tabular-nums; }
+.cand .s { font-size: 12px; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; padding: 8px 11px; font-size: 13px; border-left: 1px solid var(--rule); }
+.seg label:first-child span { border-left: 0; }
+.seg input:checked + span { background: var(--accent); color: var(--accent-ink); }
+.ext { width: 100%; border-collapse: collapse; font: 13px/1.5 var(--font-data); font-variant-numeric: tabular-nums; }
+.ext th { text-align: left; font: 600 12px/1 var(--font-display); letter-spacing: 0.1em; padding-right: 8px; }
+.ext td { text-align: right; padding: 2px 0 2px 10px; }
+.ext tr + tr { border-top: 1px solid var(--rule); }
+th.x { color: var(--ax-x); } th.y { color: var(--ax-y); } th.z { color: var(--ax-z); }
+details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+pre.mono { margin: 8px 0; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); }
+.foot { color: var(--muted); font-size: 12px; margin-top: auto; }
+
+.stage { position: relative; background: var(--stage); min-width: 0; overflow: hidden; }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.bar { position: absolute; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+.bar.l { left: 12px; } .bar.r { right: 12px; justify-content: flex-end; }
+.bar button, .chip {
+  background: var(--panel); padding: 7px 10px; font-size: 13px;
+}
+.chip { border: 1px solid var(--rule); border-radius: 6px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
+.chip input { margin: 0; accent-color: var(--accent); }
+.legend {
+  position: absolute; left: 12px; bottom: 12px; display: flex; gap: 12px; align-items: center;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 10px;
+  font: 12px/1 var(--font-data);
+}
+.legend .x { color: var(--ax-x); } .legend .y { color: var(--ax-y); } .legend .z { color: var(--ax-z); } .legend .p { color: var(--plane); }
+.heat {
+  position: absolute; right: 12px; bottom: 12px; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 6px; padding: 8px 10px; font: 12px/1 var(--font-data); display: grid; gap: 6px; width: min(240px, 60%);
+}
+.heat .ramp { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--heat-0), var(--heat-1), var(--heat-2)); }
+.heat .ends { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.heat input { width: 64px; font: 12px var(--font-data); background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 4px; }
+.drop {
+  position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px;
+  display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 80%, transparent);
+  font: 600 22px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+  pointer-events: none;
+}
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; pointer-events: none; }
+
+@media (max-width: 760px) {
+  html, body { height: auto; }
+  .app { grid-template-columns: 1fr; height: auto; }
+  .stage { order: -1; height: 58vh; min-height: 320px; }
+  .panel { border-right: 0; overflow: visible; padding-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <header class="brand">
+      <h1>STL Reorient</h1>
+      <p>Finds the plane the part mirrors across and turns the part so that plane becomes YZ. The mesh is only rotated and moved, never mirrored.</p>
+    </header>
+
+    <section aria-labelledby="h-file">
+      <h2 id="h-file">Model</h2>
+      <div class="row">
+        <label class="btn primary" for="file" tabindex="0" id="open-label">Open STL…</label>
+        <input id="file" type="file" accept=".stl,model/stl,application/sla" hidden>
+        <span class="meta">or drop it on the view</span>
+      </div>
+      <div><div class="file-name" id="file-name">—</div><div class="meta" id="file-meta"></div></div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="h-plane" id="sec-plane" hidden>
+      <h2 id="h-plane">Mirror plane</h2>
+      <div class="headline"><span class="big" id="match">—</span><span class="pill" id="pill">—</span></div>
+      <div class="caption" id="match-cap"></div>
+      <div class="stats">
+        <div class="stat"><b>Median</b><span id="st-med">—</span></div>
+        <div class="stat"><b>P95</b><span id="st-p95">—</span></div>
+        <div class="stat"><b>Max</b><span id="st-max">—</span></div>
+      </div>
+      <div class="caption">Distance from each mirrored surface point to the surface, in file units (mm assumed).</div>
+      <div class="mono" id="plane-eq"></div>
+      <div class="cands" id="cands" role="radiogroup" aria-label="Plane candidates"></div>
+    </section>
+
+    <section aria-labelledby="h-place" id="sec-place" hidden>
+      <h2 id="h-place">Placement</h2>
+      <div class="row">
+        <button id="rot-x" type="button" title="Rotate the part 90° about X (Z goes to Y). The mirror plane stays on YZ.">Rotate 90° about X</button>
+        <button id="flip-z" type="button" title="Turn the part 180° about Z (front and back swap). The mirror plane stays on YZ.">Flip 180° about Z</button>
+      </div>
+      <div class="row">
+        <span class="meta">Origin</span>
+        <div class="seg" role="radiogroup" aria-label="Origin">
+          <label><input type="radio" name="origin" value="bbox" id="or-bbox" checked><span>Box centre</span></label>
+          <label><input type="radio" name="origin" value="min" id="or-min"><span>Box min</span></label>
+          <label><input type="radio" name="origin" value="centroid" id="or-cen"><span>Centroid</span></label>
+        </div>
+      </div>
+      <table class="ext" id="ext" aria-label="Extents after reorientation"></table>
+      <div class="caption">X = 0 is always the mirror plane. Box min puts Y and Z at their minimum, so all Y and Z values are positive.</div>
+    </section>
+
+    <section aria-labelledby="h-export" id="sec-export" hidden>
+      <h2 id="h-export">Export</h2>
+      <div class="row"><button class="primary" id="save" type="button">Download reoriented STL</button></div>
+      <div class="meta" id="move-sum"></div>
+      <details>
+        <summary>Transform matrix (input → output)</summary>
+        <pre class="mono" id="matrix"></pre>
+        <button id="copy" type="button">Copy matrix</button>
+      </details>
+    </section>
+
+    <div class="foot">Runs entirely in your browser; the file is not uploaded anywhere.</div>
+  </aside>
+
+  <main class="stage" id="stage" aria-label="3D view">
+    <canvas id="gl"></canvas>
+    <div class="bar l" role="group" aria-label="View direction">
+      <button type="button" data-view="iso">Iso</button>
+      <button type="button" data-view="x" title="Look along −X at the mirror plane">X</button>
+      <button type="button" data-view="y" title="Look along +Y: left and right halves side by side">Y</button>
+      <button type="button" data-view="z" title="Look down −Z">Z</button>
+    </div>
+    <div class="bar r">
+      <label class="chip"><input type="checkbox" id="show-plane" checked> Plane</label>
+      <label class="chip"><input type="checkbox" id="show-heat"> Deviation map</label>
+    </div>
+    <div class="legend" aria-hidden="true"><span class="x">X</span><span class="y">Y</span><span class="z">Z</span><span class="p">▭ YZ mirror plane</span></div>
+    <div class="heat" id="heat-legend" hidden>
+      <div class="ramp"></div>
+      <div class="ends"><span>0</span><label>≥ <input id="heat-max" type="number" min="0" step="any" inputmode="decimal"> mm</label></div>
+    </div>
+    <div class="drop" id="drop" hidden>Drop STL to analyse</div>
+    <div class="nogl" id="nogl" hidden>3D view unavailable (three.js did not load). Analysis and download still work.</div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="symcore.js"></script>
+<script>
+(function () {
+'use strict';
+const $ = s => document.querySelector(s);
+const S = window.SymCore;
+const st = { tris: null, name: '', an: null, sel: 0, rx: 0, fz: 0, origin: 'bbox', fr: null, heat: {}, heatMax: null, busy: false };
+const downloadsP = window.claude && typeof window.claude.use === 'function' ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+
+/* ---------- formatting */
+function fmtLen(v) {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a < 0.001) return v.toExponential(1);
+  if (a < 1) return v.toFixed(4);
+  if (a < 100) return v.toFixed(3);
+  return v.toFixed(2);
+}
+const fmtInt = n => n.toLocaleString('en-US');
+function niceCeil(v) {
+  if (!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+}
+
+/* ---------- status + yielding */
+function setStatus(msg, err) { const el = $('#status'); el.textContent = msg; el.classList.toggle('error', !!err); }
+let lastYield = 0;
+function tick() {
+  const now = performance.now();
+  if (now - lastYield < 35) return null;
+  return new Promise(r => {
+    let done = false;
+    const go = () => { if (!done) { done = true; setTimeout(() => { lastYield = performance.now(); r(); }, 0); } };
+    requestAnimationFrame(go); setTimeout(go, 80);
+  });
+}
+const paint = () => { lastYield = 0; return tick(); };
+function progress(stage, f) { setStatus(stage + (f > 0 ? ' ' + Math.round(100 * f) + ' %' : '') + ' …'); }
+function setBusy(b) {
+  st.busy = b;
+  document.querySelectorAll('.panel button, .panel input, .stage input').forEach(el => { el.disabled = b; });
+  $('#open-label').setAttribute('aria-disabled', b ? 'true' : 'false');
+}
+
+/* ---------- 3D */
+const G = {};
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function initGL() {
+  if (typeof THREE === 'undefined' || !THREE.OrbitControls) { $('#nogl').hidden = false; return; }
+  const canvas = $('#gl');
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
+  catch (e) { $('#nogl').hidden = false; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x000000, 0);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 1e7);
+  camera.up.set(0, 0, 1);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = 0.15;
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa7b4, 0.75);
+  const key = new THREE.DirectionalLight(0xffffff, 0.7);
+  scene.add(hemi, key, key.target);
+  const geom = new THREE.BufferGeometry();
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.05, flatShading: true, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  const mesh = new THREE.Mesh(geom, mat);
+  const pGeom = new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2);
+  const pMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false });
+  const plane = new THREE.Mesh(pGeom, pMat);
+  const pEdge = new THREE.LineSegments(new THREE.EdgesGeometry(pGeom), new THREE.LineBasicMaterial({ transparent: true, opacity: 0.8 }));
+  plane.add(pEdge);
+  const axes = new THREE.Group();
+  scene.add(mesh, plane, axes);
+  Object.assign(G, { renderer, scene, camera, controls, key, geom, mat, mesh, plane, pMat, pEdge, axes, dirty: true });
+  controls.addEventListener('change', () => { G.dirty = true; });
+  new ResizeObserver(resize).observe($('#stage'));
+  resize();
+  applyTheme();
+  const loop = () => {
+    requestAnimationFrame(loop);
+    const moved = controls.update();
+    if (moved || G.dirty) {
+      key.position.copy(camera.position); key.target.position.copy(controls.target);
+      renderer.render(scene, camera); G.dirty = false;
+    }
+  };
+  loop();
+}
+function resize() {
+  if (!G.renderer) return;
+  const r = $('#stage').getBoundingClientRect();
+  G.renderer.setSize(Math.max(1, r.width), Math.max(1, r.height), false);
+  G.camera.aspect = Math.max(1, r.width) / Math.max(1, r.height);
+  G.camera.updateProjectionMatrix();
+  G.dirty = true;
+}
+function applyTheme() {
+  if (!G.renderer) return;
+  G.pMat.color.set(css('--plane')); G.pEdge.material.color.set(css('--plane'));
+  buildAxes();
+  applyMaterial();
+}
+/* Vertex colours only while the deviation map for the current plane exists. */
+function applyMaterial() {
+  const on = !!(G.heatOn && st.heat[st.sel]);
+  G.mat.vertexColors = on;
+  G.mat.color.set(on ? '#ffffff' : css('--mesh'));
+  G.mat.needsUpdate = true;
+  if (on) colorHeat(); else G.geom.deleteAttribute('color');
+  G.dirty = true;
+}
+function textSprite(txt, color, size) {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.font = '600 44px ' + css('--font-display'); g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(txt, 32, 34);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
+  sp.scale.set(size, size, 1); sp.renderOrder = 10;
+  return sp;
+}
+function buildAxes() {
+  if (!G.renderer || !st.fr) return;
+  const g = G.axes;
+  while (g.children.length) { const o = g.children.pop(); o.geometry && o.geometry.dispose(); o.material && (o.material.map && o.material.map.dispose(), o.material.dispose()); }
+  const e = st.fr.ext;
+  const span = Math.max(e[0][1] - e[0][0], e[1][1] - e[1][0], e[2][1] - e[2][0]);
+  const L = 0.62 * span;
+  [['X', [1, 0, 0], '--ax-x'], ['Y', [0, 1, 0], '--ax-y'], ['Z', [0, 0, 1], '--ax-z']].forEach(([t, d, v]) => {
+    const col = css(v);
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(d[0] * L, d[1] * L, d[2] * L)]);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: true }));
+    line.renderOrder = 9;
+    const sp = textSprite(t, col, 0.07 * span);
+    sp.position.set(d[0] * L * 1.07, d[1] * L * 1.07, d[2] * L * 1.07);
+    g.add(line, sp);
+  });
+}
+function updateGeometry() {
+  if (!G.renderer) return;
+  const pos = S.transform(st.tris, st.fr.M);
+  G.geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  G.geom.deleteAttribute('normal');
+  G.geom.computeVertexNormals();
+  G.geom.computeBoundingSphere();
+  const e = st.fr.ext;
+  const hy = (e[1][1] - e[1][0]) * 1.14 || 1, hz = (e[2][1] - e[2][0]) * 1.14 || 1;
+  G.plane.scale.set(1, hy, hz);
+  G.plane.position.set(0, (e[1][0] + e[1][1]) / 2, (e[2][0] + e[2][1]) / 2);
+  buildAxes();
+  applyMaterial();
+}
+function setView(kind) {
+  if (!G.renderer || !G.geom.boundingSphere) return;
+  // Frame the union of part, plane and axis arrows (drawn from the origin).
+  const e = st.fr.ext, span = Math.max(e[0][1] - e[0][0], e[1][1] - e[1][0], e[2][1] - e[2][0]), ax = 0.66 * span;
+  const my = 0.07 * (e[1][1] - e[1][0]), mz = 0.07 * (e[2][1] - e[2][0]);
+  const lo = [Math.min(e[0][0], 0), Math.min(e[1][0] - my, 0), Math.min(e[2][0] - mz, 0)];
+  const hi = [Math.max(e[0][1], ax), Math.max(e[1][1] + my, ax), Math.max(e[2][1] + mz, ax)];
+  const c = new THREE.Vector3((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
+  const r = 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 0.92 || 1;
+  const dist = (r / Math.sin((Math.min(G.camera.fov, G.camera.fov * G.camera.aspect) * Math.PI) / 360)) * 1.02;
+  const dirs = { iso: [1, -1.25, 0.8], x: [1, 0, 0], y: [0, -1, 0], z: [0, -0.002, 1] };
+  const d = kind === 'keep' ? G.camera.position.clone().sub(G.controls.target).normalize() : new THREE.Vector3(...dirs[kind]).normalize();
+  G.camera.position.copy(c).addScaledVector(d, dist);
+  G.camera.near = dist / 1000; G.camera.far = dist * 20; G.camera.updateProjectionMatrix();
+  G.controls.target.copy(c);
+  G.controls.update();
+  G.dirty = true;
+}
+
+/* ---------- deviation map */
+function heatScale() {
+  const c = st.an.candidates[st.sel];
+  return st.heatMax != null ? st.heatMax : niceCeil(Math.max(3 * c.p95, 1e-3 * st.an.mesh.L));
+}
+function colorHeat() {
+  const vals = st.heat[st.sel];
+  if (!G.renderer || !vals) return;
+  const c0 = new THREE.Color(css('--heat-0')), c1 = new THREE.Color(css('--heat-1')), c2 = new THREE.Color(css('--heat-2'));
+  const n = vals.length, col = new Float32Array(9 * n), max = heatScale(), tmp = new THREE.Color();
+  for (let t = 0; t < n; t++) {
+    const f = Math.min(1, vals[t] / max);
+    if (f < 0.5) tmp.copy(c0).lerp(c1, f * 2); else tmp.copy(c1).lerp(c2, (f - 0.5) * 2);
+    for (let k = 0; k < 3; k++) { col[9 * t + 3 * k] = tmp.r; col[9 * t + 3 * k + 1] = tmp.g; col[9 * t + 3 * k + 2] = tmp.b; }
+  }
+  G.geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  $('#heat-max').value = +max.toPrecision(3);
+  G.dirty = true;
+}
+async function setHeat(on) {
+  G.heatOn = on;
+  $('#heat-legend').hidden = !on;
+  if (!G.renderer) return;
+  if (on && !st.heat[st.sel]) {
+    setBusy(true);
+    try {
+      st.heat[st.sel] = await S.deviationMap(st.an, st.an.candidates[st.sel], { tick, progress });
+      setStatus('Deviation map ready. Warm colours show where the mirror image misses the surface.');
+    } finally { setBusy(false); }
+  }
+  applyMaterial();
+}
+
+/* ---------- panel */
+function renderPlane() {
+  const an = st.an, c = an.candidates[st.sel];
+  $('#match').textContent = (100 * c.match).toFixed(1) + ' %';
+  const cls = c.match >= 0.95 ? 'good' : c.match >= 0.75 ? 'warn' : 'bad';
+  const pill = $('#pill');
+  pill.className = 'pill ' + cls;
+  pill.textContent = { good: 'Strong symmetry', warn: 'Partial symmetry', bad: 'Weak symmetry' }[cls];
+  $('#match-cap').textContent = `of the surface mirrors onto itself within ${fmtLen(c.tol)} mm (0.1 % of the part's diagonal).`;
+  $('#st-med').textContent = fmtLen(c.median);
+  $('#st-p95').textContent = fmtLen(c.p95);
+  $('#st-max').textContent = (c.capped ? '> ' : '') + fmtLen(c.max);
+  const f6 = v => (v < 0 ? '−' : ' ') + Math.abs(v).toFixed(6);
+  $('#plane-eq').textContent = 'Plane in input coordinates, n·x = d\n' +
+    `n = (${f6(c.n[0])}, ${f6(c.n[1])}, ${f6(c.n[2])})\nd = ${(c.d < 0 ? '−' : '') + fmtLen(Math.abs(c.d))}`;
+  const box = $('#cands');
+  box.innerHTML = '';
+  if (an.candidates.length > 1) {
+    const n0 = an.candidates[0].n;
+    an.candidates.forEach((cd, i) => {
+      const ang = (Math.acos(Math.min(1, Math.abs(cd.n[0] * n0[0] + cd.n[1] * n0[1] + cd.n[2] * n0[2]))) * 180) / Math.PI;
+      const lab = document.createElement('label');
+      lab.className = 'cand';
+      lab.innerHTML = `<input type="radio" name="cand" value="${i}" id="cand-${i}"${i === st.sel ? ' checked' : ''}>` +
+        `<span class="t">Plane ${i + 1} · ${(100 * cd.match).toFixed(1)} %</span>` +
+        `<span class="s">P95 ${fmtLen(cd.p95)} mm${i ? ` · ${ang.toFixed(1)}° from plane 1` : ' · best fit'}</span>`;
+      lab.querySelector('input').addEventListener('change', () => selectCand(i));
+      box.appendChild(lab);
+    });
+  }
+}
+function renderPlacement() {
+  const e = st.fr.ext;
+  const rows = [['X', 'x', e[0]], ['Y', 'y', e[1]], ['Z', 'z', e[2]]];
+  $('#ext').innerHTML = '<tr><th></th><td>min</td><td>max</td><td>size</td></tr>' +
+    rows.map(([t, c, r]) => `<tr><th class="${c}">${t}</th><td>${fmtLen(r[0])}</td><td>${fmtLen(r[1])}</td><td>${fmtLen(r[1] - r[0])}</td></tr>`).join('');
+  const M = st.fr.M;
+  const f = v => (v < 0 ? '−' : ' ') + Math.abs(v).toFixed(6);
+  $('#matrix').textContent = [0, 1, 2, 3].map(i => [0, 1, 2, 3].map(j => f(M[4 * i + j])).join('  ')).join('\n');
+  const R = st.fr.R, tr = R[0] + R[4] + R[8];
+  const ang = (Math.acos(Math.max(-1, Math.min(1, (tr - 1) / 2))) * 180) / Math.PI;
+  $('#move-sum').textContent = `Rotation ${ang.toFixed(2)}°, translation ${fmtLen(Math.hypot(M[3], M[7], M[11]))} mm. Binary STL, same triangles, same winding.`;
+}
+function recompute(refit) {
+  st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin });
+  renderPlacement();
+  updateGeometry();
+  setView(refit ? 'iso' : 'keep');
+}
+async function selectCand(i) {
+  st.sel = i;
+  renderPlane();
+  recompute(false);
+  if (G.heatOn) await setHeat(true);
+}
+
+/* ---------- load + analyse */
+async function analyseBuffer(buf, name, note) {
+  if (st.busy) return;
+  setBusy(true);
+  try {
+    setStatus('Reading ' + name + ' …'); await paint();
+    const tris = S.parseSTL(buf);
+    const an = await S.analyse(tris, { tick, progress });
+    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, heat: {}, heatMax: null });
+    $('#file-name').textContent = name;
+    $('#file-meta').textContent = `${fmtInt(tris.length / 9)} triangles` + (note ? ' · ' + note : '');
+    ['#sec-plane', '#sec-place', '#sec-export'].forEach(s => { $(s).hidden = false; });
+    renderPlane();
+    recompute(true);
+    setStatus(`Analysed in ${(an.ms / 1000).toFixed(1)} s.`);
+    if (G.heatOn) { setBusy(false); await setHeat(true); }
+  } catch (e) {
+    setStatus('Could not analyse ' + name + ': ' + (e && e.message ? e.message : e), true);
+  } finally { setBusy(false); }
+}
+async function openFile(file) {
+  if (!file) return;
+  if (!/\.stl$/i.test(file.name)) { setStatus(file.name + ' is not an .stl file.', true); return; }
+  analyseBuffer(await file.arrayBuffer(), file.name);
+}
+
+/* ---------- export */
+async function save() {
+  if (!st.an) return;
+  const out = S.writeSTL(S.transform(st.tris, st.fr.M), 'stl-reorient: mirror plane on YZ (x = 0)');
+  const base = st.name.replace(/\.stl$/i, '') + '_reoriented';
+  const dl = await downloadsP;
+  if (dl) {
+    try {
+      await dl.save({ filename: base + '.zip', data: new Blob([S.zipOne(base + '.stl', new Uint8Array(out))]) });
+      setStatus('Saved ' + base + '.zip (contains ' + base + '.stl).');
+    } catch (e) {
+      setStatus(e && e.code === 'declined' ? 'Download cancelled.' : 'Download failed: ' + ((e && (e.message || e.code)) || e), !(e && e.code === 'declined'));
+    }
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([out], { type: 'model/stl' }));
+  a.download = base + '.stl';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  setStatus(window.claude ? 'Requested ' + base + '.stl. If nothing was saved, this view blocks downloads: open index.html from the repository instead.' : 'Saved ' + base + '.stl.');
+}
+
+/* ---------- wiring */
+$('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+$('#open-label').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !st.busy) { e.preventDefault(); $('#file').click(); } });
+$('#open-label').addEventListener('click', e => { if (st.busy) e.preventDefault(); });
+$('#rot-x').addEventListener('click', () => { st.rx = (st.rx + 1) & 3; recompute(false); });
+$('#flip-z').addEventListener('click', () => { st.fz ^= 1; recompute(false); });
+document.querySelectorAll('input[name="origin"]').forEach(r => r.addEventListener('change', () => { st.origin = r.value; recompute(false); }));
+$('#save').addEventListener('click', save);
+$('#copy').addEventListener('click', () => {
+  const txt = $('#matrix').textContent;
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('#matrix')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+  try { navigator.clipboard.writeText(txt).then(() => setStatus('Matrix copied.'), () => { sel(); setStatus('Matrix selected. Press Ctrl/⌘+C to copy.'); }); }
+  catch (e) { sel(); setStatus('Matrix selected. Press Ctrl/⌘+C to copy.'); }
+});
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+$('#show-plane').addEventListener('change', e => { if (G.plane) { G.plane.visible = e.target.checked; G.dirty = true; } });
+$('#show-heat').addEventListener('change', e => { if (st.an) setHeat(e.target.checked); });
+$('#heat-max').addEventListener('change', e => { const v = parseFloat(e.target.value); st.heatMax = v > 0 ? v : null; applyMaterial(); });
+
+const stage = $('#stage');
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { dragDepth++; $('#drop').hidden = false; } });
+window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#drop').hidden = true; });
+window.addEventListener('dragover', e => { e.preventDefault(); });
+window.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; $('#drop').hidden = true;
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) openFile(f);
+});
+void stage;
+
+const mq = window.matchMedia('(prefers-color-scheme: dark)');
+(mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+initGL();
+
+// Opens on a worked example: synthetic seat post, deliberately tilted, with a one-sided logo emboss.
+const demo = S.rigid(S.seatPost({ seg: 96, nz: 20 }), S.rotationXYZ(0.41, -0.72, 1.17), [37.2, -120.5, 12.8]);
+analyseBuffer(S.writeSTL(demo), 'example-seatpost-tilted.stl', 'built-in example; open your own STL to replace it');
+})();
+</script>
+</body>
+</html>
