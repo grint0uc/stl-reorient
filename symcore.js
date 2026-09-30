@@ -540,7 +540,11 @@ function refinePlane(n0, d0, src, corr, o) {
   const R = new Float64Array(K), J = new Float64Array(3 * K), ok = new Uint8Array(K), ab = new Float64Array(K);
   let sched = o.sigma0, sigma = o.sigma0, it = 0;
   for (; it < o.iters; it++) {
-    const B = tangentBasis(nx, ny, nz);
+    let B = tangentBasis(nx, ny, nz);
+    if (o.lock) { // only rotation about the locked normal: t1 = lock × n
+      const t1 = norm3(cross3(o.lock, [nx, ny, nz])), t2 = cross3([nx, ny, nz], t1);
+      B = [t1[0], t1[1], t1[2], t2[0], t2[1], t2[2]];
+    }
     const t1x = B[0], t1y = B[1], t1z = B[2], t2x = B[3], t2y = B[4], t2z = B[5];
     const maxD = Math.max(1.5 * TUKEY * Math.max(sigma, sched), o.minSearch);
     const maxD2 = maxD * maxD;
@@ -578,6 +582,7 @@ function refinePlane(n0, d0, src, corr, o) {
       ws += w;
     }
     if (ws < 8) break;
+    if (o.lock) { h01 = h12 = 0; h11 = 1; g1 = 0; }
     const lam = 1e-9 * (h00 + h11 + h22) + 1e-30;
     const x = solve3([h00 + lam, h01, h02, h01, h11 + lam, h12, h02, h12, h22 + lam], [-g0, -g1, -g2]);
     if (!x) break;
@@ -585,7 +590,9 @@ function refinePlane(n0, d0, src, corr, o) {
     const ang = Math.hypot(da, db);
     if (ang > 0.2) { da *= 0.2 / ang; db *= 0.2 / ang; }
     if (Math.abs(dd) > 0.05) dd = 0.05 * Math.sign(dd);
-    const n1 = norm3([nx + da * t1x + db * t2x, ny + da * t1y + db * t2y, nz + da * t1z + db * t2z]);
+    let n1 = [nx + da * t1x + db * t2x, ny + da * t1y + db * t2y, nz + da * t1z + db * t2z];
+    if (o.lock) { const k = dot3(n1, o.lock); n1 = [n1[0] - k * o.lock[0], n1[1] - k * o.lock[1], n1[2] - k * o.lock[2]]; }
+    n1 = norm3(n1);
     nx = n1[0]; ny = n1[1]; nz = n1[2]; d += dd;
     sched *= o.gamma;
     if (sched <= sigma && Math.hypot(da, db) < o.tolA && Math.abs(dd) < o.tolD) { it++; break; }
@@ -648,7 +655,8 @@ const DEF = {
   seeds: 8, keep: 3,
   tauCoarse: 0.05,   // truncation, fraction of bbox diagonal
   tauScore: 0.01,
-  matchTol: 0.001,   // "mirrors within" tolerance, fraction of diagonal
+  matchTolAbs: 1,    // "mirrors within" tolerance, file units (mm)
+  matchRel: 0.001,   // scale-free tolerance (fraction of diagonal) for the winding fallback test
 };
 
 async function searchPlanes(ctx, unoriented) {
@@ -706,31 +714,90 @@ async function searchPlanes(ctx, unoriented) {
   for (const r of t1) if (!uniq1.some(o => samePlane(o, r, 0.02, 0.003))) uniq1.push(r);
 
   // 4. Tier 2: robust ICP against the exact mesh surface (BVH closest point), then full evaluation.
-  const bc = bvhCorr(bvh);
   const out = [];
   const top = uniq1.slice(0, opt.keep);
   for (let i = 0; i < top.length; i++) {
     progress('Polishing on exact surface', i / top.length); await tick();
-    const r = refinePlane(top[i].n, top[i].d, S.s2, bc,
-      { sigma0: Math.max(4 * top[i].sigma, 2e-4), gamma: 0.5, iters: 40, sigmaMin: 1e-7, minSearch: 1e-4, tolA: 1e-8, tolD: 1e-9 });
-    await tick();
-    const dist = mirrorDistances(r.n, r.d, S.eval, bvh, 0.25);
-    let sum = 0, sq = 0, mx = 0, inTol = 0;
-    for (let k = 0; k < dist.length; k++) {
-      const v = dist[k];
-      sum += Math.min(v, opt.tauScore); sq += v * v; if (v > mx) mx = v; if (v <= opt.matchTol) inTol++;
-    }
-    const sorted = dist.slice().sort();
-    out.push({
-      nN: r.n, dN: r.d, score: sum / dist.length, match: inTol / dist.length,
-      median: sorted[sorted.length >> 1], p95: sorted[Math.floor(0.95 * (sorted.length - 1))],
-      rms: Math.sqrt(sq / dist.length), max: mx, capped: mx >= 0.25, iters: r.iters, unoriented,
-    });
+    out.push(polish(top[i], ctx, unoriented, null));
   }
+  return dedupeSorted(out);
+}
+
+function dedupeSorted(out) {
   out.sort((a, b) => a.score - b.score);
   const uniq = [];
   for (const r of out) if (!uniq.some(o => samePlane({ n: o.nN, d: o.dN }, { n: r.nN, d: r.dN }, 2e-3, 2e-4))) uniq.push(r);
   return uniq;
+}
+
+/* Tier 2: robust ICP against the exact surface (BVH closest point), then full evaluation. */
+function polish(seed, ctx, unoriented, lock) {
+  const { bvh, S, opt } = ctx;
+  const r = refinePlane(seed.n, seed.d, S.s2, bvhCorr(bvh),
+    { sigma0: Math.max(4 * seed.sigma, 2e-4), gamma: 0.5, iters: 40, sigmaMin: 1e-7, minSearch: 1e-4, tolA: 1e-8, tolD: 1e-9, lock });
+  const dist = mirrorDistances(r.n, r.d, S.eval, bvh, 0.25);
+  let sum = 0, sq = 0, mx = 0, inTol = 0, inRel = 0;
+  for (let k = 0; k < dist.length; k++) {
+    const v = dist[k];
+    sum += Math.min(v, opt.tauScore); sq += v * v; if (v > mx) mx = v;
+    if (v <= opt.matchTol) inTol++;
+    if (v <= opt.matchRel) inRel++;
+  }
+  const sorted = dist.slice().sort();
+  return {
+    nN: r.n, dN: r.d, score: sum / dist.length, match: inTol / dist.length, matchRel: inRel / dist.length,
+    median: sorted[sorted.length >> 1], p95: sorted[Math.floor(0.95 * (sorted.length - 1))],
+    rms: Math.sqrt(sq / dist.length), max: mx, capped: mx >= 0.25, iters: r.iters, unoriented,
+  };
+}
+
+function toOriginal(cd, mesh, opt) {
+  const L = mesh.L;
+  cd.n = cd.nN.slice();
+  cd.d = L * cd.dN + dot3(cd.n, mesh.c0);
+  for (const k of ['score', 'median', 'p95', 'rms', 'max']) cd[k] *= L;
+  cd.tol = opt.matchTol * L;
+  return cd;
+}
+
+/* Best mirror plane perpendicular to c1 (its normal is locked ⊥ c1.n): 1-D sweep of the
+   rotation about c1's normal, then the same robust ICP with that constraint. */
+async function secondPlane(an, c1, options) {
+  const o = options || {};
+  const tick = o.tick || (() => undefined), progress = o.progress || (() => {});
+  const ctx = an.ctx, { mesh, kd, kdc, bvh, S, opt } = ctx;
+  kd.unoriented = kdc.unoriented = bvh.unoriented = c1.unoriented;
+  const lock = c1.nN, c = mesh.centroid;
+  const B = tangentBasis(lock[0], lock[1], lock[2]);
+  const nA = 360, sc = new Float64Array(nA), dirs = [];
+  for (let k = 0; k < nA; k++) {
+    const th = (Math.PI * k) / nA, ct = Math.cos(th), st = Math.sin(th);
+    const n = [ct * B[0] + st * B[3], ct * B[1] + st * B[4], ct * B[2] + st * B[5]];
+    dirs.push(n);
+    sc[k] = scoreKD(n, dot3(n, c), S.coarse, kdc, opt.tauCoarse);
+    if ((k & 31) === 31) { progress('Scanning perpendicular planes', k / nA); await tick(); }
+  }
+  const minima = [];
+  for (let k = 0; k < nA; k++) {
+    let m = true;
+    for (let j = 1; j <= 4 && m; j++) if (sc[(k + j) % nA] < sc[k] || sc[(k - j + nA) % nA] < sc[k]) m = false;
+    if (m) minima.push(k);
+  }
+  minima.sort((a, b) => sc[a] - sc[b]);
+  const kc = kdCorr(kd), t1 = [];
+  for (const k of minima.slice(0, 4)) {
+    const r = refinePlane(dirs[k], dot3(dirs[k], c), S.s1, kc,
+      { sigma0: 0.02, gamma: 0.65, iters: 40, sigmaMin: 2e-5, minSearch: 2e-3, tolA: 1e-6, tolD: 1e-7, lock });
+    r.score = scoreKD(r.n, r.d, S.s1, kd, opt.tauScore);
+    t1.push(r);
+  }
+  t1.sort((a, b) => a.score - b.score);
+  const out = [];
+  for (let i = 0; i < Math.min(2, t1.length); i++) {
+    progress('Polishing perpendicular plane', i / 2); await tick();
+    out.push(polish(t1[i], ctx, c1.unoriented, lock));
+  }
+  return dedupeSorted(out).map(cd => toOriginal(cd, mesh, opt));
 }
 
 /* Full pipeline. tris: Float32Array (9 per triangle, original units). */
@@ -742,6 +809,7 @@ async function analyse(tris, options) {
   const t0 = Date.now();
   progress('Preparing mesh', 0); await tick();
   const mesh = prepareMesh(tris);
+  opt.matchTol = opt.matchTolAbs / mesh.L;
   const bvh = new BVH(mesh);
   await tick();
   const S = {
@@ -755,19 +823,13 @@ async function analyse(tris, options) {
   const ctx = { mesh, kd, kdc, bvh, S, opt, tick, progress };
   let cands = await searchPlanes(ctx, false);
   // Mixed triangle winding breaks the oriented-normal test; retry unoriented if the match is poor.
-  if (!cands.length || cands[0].match < 0.9) {
+  if (!cands.length || cands[0].matchRel < 0.9) {
     const alt = await searchPlanes(ctx, true);
     if (alt.length && (!cands.length || alt[0].score < cands[0].score)) cands = alt;
   }
-  const L = mesh.L, c0 = mesh.c0;
-  for (const cd of cands) {
-    cd.n = cd.nN.slice();
-    cd.d = L * cd.dN + dot3(cd.n, c0);
-    for (const k of ['score', 'median', 'p95', 'rms', 'max']) cd[k] *= L;
-    cd.tol = opt.matchTol * L;
-  }
-  bvh.unoriented = kd.unoriented = cands.length ? cands[0].unoriented : false;
-  return { tris, mesh, bvh, candidates: cands, ms: Date.now() - t0 };
+  for (const cd of cands) toOriginal(cd, mesh, opt);
+  bvh.unoriented = kd.unoriented = kdc.unoriented = cands.length ? cands[0].unoriented : false;
+  return { tris, mesh, bvh, ctx, candidates: cands, ms: Date.now() - t0 };
 }
 
 /* ------------------------------------------------------------------ reorientation */
@@ -803,7 +865,8 @@ function inPlaneAxis(mesh, n) {
 function frame(an, cand, opt) {
   opt = opt || {};
   const mesh = an.mesh, tris = an.tris, n = cand.n, d = cand.d;
-  let u = cand.axis || (cand.axis = inPlaneAxis(mesh, n));
+  const n2 = opt.second ? opt.second.n : null;
+  let u = n2 ? norm3(cross3(n, n2)) : cand.axis || (cand.axis = inPlaneAxis(mesh, n));
   const cO = [mesh.c0[0] + mesh.L * mesh.centroid[0], mesh.c0[1] + mesh.L * mesh.centroid[1], mesh.c0[2] + mesh.L * mesh.centroid[2]];
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < tris.length; i += 3) {
@@ -821,6 +884,10 @@ function frame(an, cand, opt) {
   for (let k = 0; k < ((opt.rx || 0) & 3); k++) R = mul33(RX_M90, R);
   const off = dot3(n, cO) - d;
   const p0 = [cO[0] - off * n[0], cO[1] - off * n[1], cO[2] - off * n[2]];
+  if (n2) { // n2 ⊥ n, so this stays on plane 1
+    const o2 = dot3(n2, p0) - opt.second.d;
+    for (let k = 0; k < 3; k++) p0[k] -= o2 * n2[k];
+  }
   const b = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
   for (let i = 0; i < tris.length; i += 3) {
     const x = tris[i] - p0[0], y = tris[i + 1] - p0[1], z = tris[i + 2] - p0[2];
@@ -833,12 +900,18 @@ function frame(an, cand, opt) {
   let oy = 0.5 * (b[2] + b[3]), oz = 0.5 * (b[4] + b[5]);
   if (opt.origin === 'min') { oy = b[2]; oz = b[4]; }
   else if (opt.origin === 'centroid') { oy = cw[1]; oz = cw[2]; }
+  let plane2 = null;
+  if (n2) { // the axis plane 2's normal lands on is pinned to 0
+    const m = mulv(R, n2);
+    if (Math.abs(m[1]) > 0.5) { oy = 0; plane2 = 'XZ'; } else { oz = 0; plane2 = 'XY'; }
+  }
   const Rp = mulv(R, p0);
   const t = [-Rp[0], -Rp[1] - oy, -Rp[2] - oz];
   return {
     R, t,
     M: [R[0], R[1], R[2], t[0], R[3], R[4], R[5], t[1], R[6], R[7], R[8], t[2], 0, 0, 0, 1],
     ext: [[b[0], b[1]], [b[2] - oy, b[3] - oy], [b[4] - oz, b[5] - oz]],
+    plane2,
   };
 }
 
@@ -954,7 +1027,7 @@ function rigid(tris, R, t) {
 
 const SymCore = {
   parseSTL, writeSTL, zipOne, crc32,
-  analyse, frame, transform, deviationMap,
+  analyse, secondPlane, frame, transform, deviationMap,
   seatPost, rotationXYZ, rigid,
   _internal: { prepareMesh, sampleSurface, KDTree, BVH, eigSym3, refinePlane, mirrorDistances, fibHemisphere, closestPtTri, CP },
 };

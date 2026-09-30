@@ -5,251 +5,258 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>STL Reorient</title>
 <style>
-/* Layout: instrument panel (left, scrolls on its own) beside a full-bleed 3D stage; stacks on phones. */
+/* Layout: sticky header with file actions; below it a tool panel (left, scrolls) beside a full-bleed 3D stage.
+   Single dark theme: condensed uppercase display type, hard 2px/4px rules, square corners, one yellow accent. */
 :root {
-  --bg: #eef1f4;
-  --panel: #f9fafb;
-  --ink: #17212b;
-  --muted: #5b6773;
-  --rule: #d5dce3;
-  --accent: #1f4fd1;
-  --accent-ink: #ffffff;
-  --plane: #7a4fd8;
-  --stage: #e4e8ec;
-  --mesh: #9eabb8;
-  --good: #1d7a4c;
-  --warn: #a2650a;
-  --bad: #b4382a;
-  --heat-0: #9eabb8;
-  --heat-1: #e6a23a;
-  --heat-2: #c8412f;
-  --ax-x: #d2443a;
-  --ax-y: #2f9a55;
-  --ax-z: #2f66d8;
-  --font-display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
-  --font-body: "Barlow", "Helvetica Neue", Arial, sans-serif;
-  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f1419; --panel: #151b21; --ink: #e3e9ee; --muted: #93a0ab; --rule: #27313a;
-    --accent: #7899f6; --accent-ink: #0a1022; --plane: #a98bff; --stage: #0b0f13; --mesh: #7d8a97;
-    --good: #4cbf89; --warn: #e2a645; --bad: #ef6d5b;
-    --heat-0: #7d8a97; --heat-1: #e9a847; --heat-2: #f0604c;
-    --ax-x: #f0645a; --ax-y: #4fc57a; --ax-z: #6f97f7;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0f1419; --panel: #151b21; --ink: #e3e9ee; --muted: #93a0ab; --rule: #27313a;
-  --accent: #7899f6; --accent-ink: #0a1022; --plane: #a98bff; --stage: #0b0f13; --mesh: #7d8a97;
-  --good: #4cbf89; --warn: #e2a645; --bad: #ef6d5b;
-  --heat-0: #7d8a97; --heat-1: #e9a847; --heat-2: #f0604c;
-  --ax-x: #f0645a; --ax-y: #4fc57a; --ax-z: #6f97f7;
+  --bg: #0a0a0a;
+  --surface: #111113;
+  --surface-2: #18181b;
+  --ink: #fafafa;
+  --ink-soft: #d4d4d8;
+  --muted: #a1a1aa;
+  --line: #2a2a2e;
+  --rule: #fafafa;
+  --accent: #ffe500;
+  --accent-dark: #d9c400;
+  --good: #22c55e;
+  --warn: #f59e0b;
+  --bad: #ef4444;
+  --stage: #0d0d0f;
+  --mesh: #8b8b94;
+  --plane: #ffe500;
+  --plane2: #e4e4e7;
+  --heat-0: #8b8b94;
+  --heat-1: #f97316;
+  --heat-2: #ef4444;
+  --ax-x: #f0645a;
+  --ax-y: #4fc57a;
+  --ax-z: #6f97f7;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color-scheme: dark;
 }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
-  font: 15px/1.45 var(--font-body);
-  -webkit-font-smoothing: antialiased;
+  font: 15px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased;
 }
-.app { display: grid; grid-template-columns: minmax(300px, 360px) 1fr; height: 100%; }
-.panel {
-  background: var(--panel); border-right: 1px solid var(--rule);
-  overflow-y: auto; padding: 20px 20px 28px; display: flex; flex-direction: column; gap: 22px;
-  min-width: 0;
-}
-.brand h1 {
-  font: 600 26px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; margin: 0;
-}
-.brand p { margin: 6px 0 0; color: var(--muted); font-size: 14px; text-wrap: balance; }
-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-h2 {
-  font: 600 13px/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--muted); margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--rule);
-}
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-button, .btn {
-  font: 500 14px/1 var(--font-body); color: var(--ink); background: transparent;
-  border: 1px solid var(--rule); border-radius: 6px; padding: 9px 12px; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
-}
-button:hover, .btn:hover { border-color: var(--muted); }
-button:focus-visible, .btn:focus-visible, input:focus-visible + span, select:focus-visible, summary:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 2px;
-}
-button.primary, .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-button:disabled { opacity: 0.45; cursor: default; }
-.file-name { font-weight: 600; overflow-wrap: anywhere; }
-.meta { color: var(--muted); font-size: 13px; }
-.status { font: 13px/1.4 var(--font-data); color: var(--muted); min-height: 1.4em; }
-.status.error { color: var(--bad); }
-.headline { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.big { font: 500 34px/1 var(--font-data); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.pill {
-  font: 600 12px/1 var(--font-display); letter-spacing: 0.1em; text-transform: uppercase;
-  padding: 5px 8px 4px; border-radius: 999px; border: 1px solid currentColor;
-}
-.pill.good { color: var(--good); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
-.caption { color: var(--muted); font-size: 13px; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.stat { border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; min-width: 0; }
-.stat b { display: block; font: 600 11px/1 var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
-.stat span { font: 500 14px/1.1 var(--font-data); font-variant-numeric: tabular-nums; }
-.mono { font: 12.5px/1.55 var(--font-data); font-variant-numeric: tabular-nums; overflow-x: auto; white-space: pre; }
-.cands { display: flex; flex-direction: column; gap: 6px; }
-.cand {
-  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center;
-  border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; cursor: pointer;
-}
-.cand:has(input:checked) { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
-.cand input { margin: 0; accent-color: var(--accent); grid-row: span 2; }
-.cand .t { font: 500 14px/1.2 var(--font-data); font-variant-numeric: tabular-nums; }
-.cand .s { font-size: 12px; color: var(--muted); }
-.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
-.seg label { position: relative; }
-.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-.seg span { display: block; padding: 8px 11px; font-size: 13px; border-left: 1px solid var(--rule); }
-.seg label:first-child span { border-left: 0; }
-.seg input:checked + span { background: var(--accent); color: var(--accent-ink); }
-.ext { width: 100%; border-collapse: collapse; font: 13px/1.5 var(--font-data); font-variant-numeric: tabular-nums; }
-.ext th { text-align: left; font: 600 12px/1 var(--font-display); letter-spacing: 0.1em; padding-right: 8px; }
-.ext td { text-align: right; padding: 2px 0 2px 10px; }
-.ext tr + tr { border-top: 1px solid var(--rule); }
-th.x { color: var(--ax-x); } th.y { color: var(--ax-y); } th.z { color: var(--ax-z); }
-details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
-pre.mono { margin: 8px 0; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); }
-.foot { color: var(--muted); font-size: 12px; margin-top: auto; }
+* { box-sizing: border-box; }
+.display, h1, h2, h3 { font-family: var(--font-display); text-transform: uppercase; letter-spacing: -0.01em; font-weight: 700; line-height: 0.95; margin: 0; }
+.eyebrow { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; font-size: 0.75rem; font-weight: 600; }
+.muted { color: var(--muted); }
+.mono { font: 12.5px/1.6 var(--font-mono); font-variant-numeric: tabular-nums; white-space: pre; overflow-x: auto; }
 
-.stage { position: relative; background: var(--stage); min-width: 0; overflow: hidden; }
+.app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 40;
+  border-bottom: 2px solid var(--rule); background: color-mix(in srgb, var(--bg) 95%, transparent); backdrop-filter: blur(8px);
+}
+.top-in { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand .display { font-size: 1.75rem; letter-spacing: -0.01em; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn {
+  min-height: 2.75rem; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: 1.0625rem; font-weight: 700; border: 2px solid var(--rule); padding: 0 1.25rem; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0;
+  transition: background-color .15s, color .15s, transform 50ms; background: transparent; color: var(--ink);
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--ink); color: var(--bg); }
+.btn-primary:hover:not(:disabled) { background: var(--accent); color: #0a0a0a; border-color: var(--accent); }
+.btn-ghost:hover:not(:disabled) { background: var(--ink); color: var(--bg); }
+.btn-sm { min-height: 2.25rem; font-size: 0.9375rem; padding: 0 0.875rem; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .35; cursor: not-allowed; }
+.btn:focus-visible, input:focus-visible + span, summary:focus-visible, .check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.work { display: grid; grid-template-columns: minmax(320px, 400px) 1fr; min-height: 0; }
+.panel { background: var(--surface); border-right: 2px solid var(--rule); overflow-y: auto; min-width: 0; }
+.blk { padding: 18px 16px; border-bottom: 2px solid var(--line); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.blk h2 { font-size: 1.6rem; }
+.status { font: 12.5px/1.45 var(--font-mono); color: var(--muted); min-height: 1.45em; }
+.status.error { color: var(--bad); }
+.file-name { font-weight: 600; overflow-wrap: anywhere; }
+
+.check { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: center; border: 2px solid var(--line); padding: 10px 12px; cursor: pointer; }
+.check:has(input:checked) { border-color: var(--rule); }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); grid-row: span 2; cursor: pointer; }
+.check input:disabled { cursor: default; }
+.check .t { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.02em; line-height: 1.1; }
+.check .s { font-size: 12.5px; color: var(--muted); }
+
+.band { background: #000; border-top: 4px solid var(--rule); border-bottom: 4px solid var(--rule); padding: 18px 16px; display: grid; gap: 14px; }
+.band-row { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 10px; }
+.band .num { font-family: var(--font-display); font-weight: 700; font-size: 2.1rem; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.band .num.sm { font-size: 1.45rem; }
+.band .lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: color-mix(in srgb, var(--ink) 65%, transparent); margin-top: 4px; }
+.band-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.band-head .display { font-size: 1.35rem; }
+.chip { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; font-size: 0.75rem; font-weight: 700; padding: 3px 8px; border: 2px solid currentColor; }
+.chip.perfect { background: var(--accent); color: #0a0a0a; border-color: var(--accent); }
+.chip.good { color: var(--good); } .chip.ok { color: var(--warn); } .chip.weak { color: var(--bad); }
+.band .note { font-size: 12.5px; color: color-mix(in srgb, var(--ink) 60%, transparent); border-left: 4px solid var(--accent); padding-left: 10px; }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.choices { display: flex; flex-wrap: wrap; }
+.choices label { position: relative; }
+.choices input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.choices span { display: block; padding: 8px 12px; border: 2px solid var(--line); margin-left: -2px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; font-size: 0.95rem; }
+.choices label:first-child span { margin-left: 0; }
+.choices input:checked + span { background: var(--ink); color: var(--bg); border-color: var(--ink); position: relative; }
+.field-label { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-soft); font-size: 0.8125rem; font-weight: 600; }
+
+table.ext { width: 100%; border-collapse: collapse; font: 13px/1.5 var(--font-mono); font-variant-numeric: tabular-nums; }
+.ext th { text-align: left; font: 700 13px/1 var(--font-display); letter-spacing: 0.1em; padding-right: 8px; }
+.ext td { text-align: right; padding: 3px 0 3px 10px; }
+.ext tr + tr { border-top: 1px solid var(--line); }
+.ext tr:first-child td { font: 600 11px/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+th.x { color: var(--ax-x); } th.y { color: var(--ax-y); } th.z { color: var(--ax-z); }
+.caption { font-size: 12.5px; color: var(--muted); }
+
+.cands { display: flex; flex-direction: column; gap: 6px; }
+details summary { cursor: pointer; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; color: var(--ink-soft); }
+pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); background: var(--bg); }
+.foot { padding: 16px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted); }
+
+.stage { position: relative; background: var(--stage); min-width: 0; min-height: 0; overflow: hidden; }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 .bar { position: absolute; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
 .bar.l { left: 12px; } .bar.r { right: 12px; justify-content: flex-end; }
-.bar button, .chip {
-  background: var(--panel); padding: 7px 10px; font-size: 13px;
-}
-.chip { border: 1px solid var(--rule); border-radius: 6px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
-.chip input { margin: 0; accent-color: var(--accent); }
-.legend {
-  position: absolute; left: 12px; bottom: 12px; display: flex; gap: 12px; align-items: center;
-  background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 10px;
-  font: 12px/1 var(--font-data);
-}
-.legend .x { color: var(--ax-x); } .legend .y { color: var(--ax-y); } .legend .z { color: var(--ax-z); } .legend .p { color: var(--plane); }
-.heat {
-  position: absolute; right: 12px; bottom: 12px; background: var(--panel); border: 1px solid var(--rule);
-  border-radius: 6px; padding: 8px 10px; font: 12px/1 var(--font-data); display: grid; gap: 6px; width: min(240px, 60%);
-}
-.heat .ramp { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--heat-0), var(--heat-1), var(--heat-2)); }
+.bar .btn { background: var(--bg); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; border: 2px solid var(--rule); background: var(--bg); padding: 0 10px; min-height: 2.25rem; cursor: pointer; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; font-size: 0.9375rem; user-select: none; }
+.toggle input { margin: 0; accent-color: var(--accent); }
+.legend { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 12px; align-items: center; background: var(--bg); border: 2px solid var(--line); padding: 6px 10px; font: 700 13px/1 var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; flex-wrap: wrap; }
+.legend .x { color: var(--ax-x); } .legend .y { color: var(--ax-y); } .legend .z { color: var(--ax-z); } .legend .p { color: var(--plane); } .legend .p2 { color: var(--plane2); }
+.heat { position: absolute; right: 12px; bottom: 12px; background: var(--bg); border: 2px solid var(--line); padding: 8px 10px; font: 12px/1 var(--font-mono); display: grid; gap: 8px; width: min(260px, 60%); }
+.heat .ramp { height: 8px; background: linear-gradient(90deg, var(--heat-0), var(--heat-1), var(--heat-2)); }
 .heat .ends { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.heat input { width: 64px; font: 12px var(--font-data); background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 4px; }
-.drop {
-  position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px;
-  display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 80%, transparent);
-  font: 600 22px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
-  pointer-events: none;
-}
+.heat input[type="number"] { width: 64px; font: 12px var(--font-mono); background: var(--surface); color: var(--ink); border: 2px solid var(--line); border-radius: 0; padding: 3px 4px; }
+.heat .choices span { padding: 3px 8px; font-size: 0.8rem; }
+.drop { position: absolute; inset: 12px; border: 4px dashed var(--accent); display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 85%, transparent); font: 700 2rem/1 var(--font-display); text-transform: uppercase; color: var(--accent); pointer-events: none; }
 .nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; pointer-events: none; }
 
 @media (max-width: 760px) {
   html, body { height: auto; }
-  .app { grid-template-columns: 1fr; height: auto; }
-  .stage { order: -1; height: 58vh; min-height: 320px; }
-  .panel { border-right: 0; overflow: visible; padding-inline: 16px; }
+  .app { height: auto; }
+  .work { grid-template-columns: 1fr; }
+  .stage { order: -1; height: 58vh; min-height: 320px; border-bottom: 2px solid var(--rule); }
+  .panel { border-right: 0; overflow: visible; }
+  .band-row { grid-template-columns: repeat(2, 1fr); }
+  .brand .eyebrow { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&display=swap">
 </head>
 <body>
 <div class="app">
-  <aside class="panel">
-    <header class="brand">
-      <h1>STL Reorient</h1>
-      <p>Finds the plane the part mirrors across and turns the part so that plane becomes YZ. The mesh is only rotated and moved, never mirrored.</p>
-    </header>
-
-    <section aria-labelledby="h-file">
-      <h2 id="h-file">Model</h2>
-      <div class="row">
-        <label class="btn primary" for="file" tabindex="0" id="open-label">Open STL…</label>
+  <header class="top">
+    <div class="top-in">
+      <div class="brand"><span class="display">STL Reorient</span><span class="eyebrow muted">Mirror plane → YZ</span></div>
+      <div class="actions">
+        <label class="btn btn-ghost" for="file" tabindex="0" id="open-label">Upload STL</label>
         <input id="file" type="file" accept=".stl,model/stl,application/sla" hidden>
-        <span class="meta">or drop it on the view</span>
+        <button class="btn btn-primary" id="save" type="button" disabled>Download STL</button>
       </div>
-      <div><div class="file-name" id="file-name">—</div><div class="meta" id="file-meta"></div></div>
-      <div class="status" id="status" role="status" aria-live="polite"></div>
-    </section>
+    </div>
+  </header>
 
-    <section aria-labelledby="h-plane" id="sec-plane" hidden>
-      <h2 id="h-plane">Mirror plane</h2>
-      <div class="headline"><span class="big" id="match">—</span><span class="pill" id="pill">—</span></div>
-      <div class="caption" id="match-cap"></div>
-      <div class="stats">
-        <div class="stat"><b>Median</b><span id="st-med">—</span></div>
-        <div class="stat"><b>P95</b><span id="st-p95">—</span></div>
-        <div class="stat"><b>Max</b><span id="st-max">—</span></div>
+  <div class="work">
+    <aside class="panel">
+      <div class="blk">
+        <div><div class="file-name" id="file-name">—</div><div class="caption" id="file-meta"></div></div>
+        <div class="status" id="status" role="status" aria-live="polite"></div>
       </div>
-      <div class="caption">Distance from each mirrored surface point to the surface, in file units (mm assumed).</div>
-      <div class="mono" id="plane-eq"></div>
-      <div class="cands" id="cands" role="radiogroup" aria-label="Plane candidates"></div>
-    </section>
 
-    <section aria-labelledby="h-place" id="sec-place" hidden>
-      <h2 id="h-place">Placement</h2>
-      <div class="row">
-        <button id="rot-x" type="button" title="Rotate the part 90° about X (Z goes to Y). The mirror plane stays on YZ.">Rotate 90° about X</button>
-        <button id="flip-z" type="button" title="Turn the part 180° about Z (front and back swap). The mirror plane stays on YZ.">Flip 180° about Z</button>
+      <div class="blk" id="sec-planes" hidden>
+        <p class="eyebrow muted" style="margin:0">Mirror planes</p>
+        <label class="check"><input type="checkbox" id="use-p1" checked disabled><span class="t">Plane 1 → YZ</span><span class="s">Best mirror plane. Always used.</span></label>
+        <label class="check"><input type="checkbox" id="use-p2"><span class="t">Plane 2 → XZ</span><span class="s">Best mirror plane perpendicular to plane 1. Fixes the remaining rotation.</span></label>
       </div>
-      <div class="row">
-        <span class="meta">Origin</span>
-        <div class="seg" role="radiogroup" aria-label="Origin">
-          <label><input type="radio" name="origin" value="bbox" id="or-bbox" checked><span>Box centre</span></label>
-          <label><input type="radio" name="origin" value="min" id="or-min"><span>Box min</span></label>
-          <label><input type="radio" name="origin" value="centroid" id="or-cen"><span>Centroid</span></label>
+
+      <div class="band" id="sec-band" hidden>
+        <div class="band-head"><span class="display">Plane 1</span><span class="chip" id="chip1">—</span></div>
+        <div class="band-row">
+          <div><div class="num" id="b1-match">—</div><div class="lab">≤ 1 mm</div></div>
+          <div><div class="num sm" id="b1-med">—</div><div class="lab">median mm</div></div>
+          <div><div class="num sm" id="b1-p95">—</div><div class="lab">P95 mm</div></div>
+          <div><div class="num sm" id="b1-max">—</div><div class="lab">max mm</div></div>
         </div>
+        <div id="band2" hidden>
+          <div class="band-head" style="margin-bottom:14px"><span class="display">Plane 2</span><span class="chip" id="chip2">—</span></div>
+          <div class="band-row">
+            <div><div class="num" id="b2-match">—</div><div class="lab">≤ 1 mm</div></div>
+            <div><div class="num sm" id="b2-med">—</div><div class="lab">median mm</div></div>
+            <div><div class="num sm" id="b2-p95">—</div><div class="lab">P95 mm</div></div>
+            <div><div class="num sm" id="b2-max">—</div><div class="lab">max mm</div></div>
+          </div>
+        </div>
+        <p class="note" style="margin:0">Share of the surface whose mirror image lands within 1 mm of the surface. Under 50 % weak, 50–75 % ok, 75–90 % good, 90 % and up perfect.</p>
       </div>
-      <table class="ext" id="ext" aria-label="Extents after reorientation"></table>
-      <div class="caption">X = 0 is always the mirror plane. Box min puts Y and Z at their minimum, so all Y and Z values are positive.</div>
-    </section>
 
-    <section aria-labelledby="h-export" id="sec-export" hidden>
-      <h2 id="h-export">Export</h2>
-      <div class="row"><button class="primary" id="save" type="button">Download reoriented STL</button></div>
-      <div class="meta" id="move-sum"></div>
-      <details>
-        <summary>Transform matrix (input → output)</summary>
-        <pre class="mono" id="matrix"></pre>
-        <button id="copy" type="button">Copy matrix</button>
-      </details>
-    </section>
+      <div class="blk" id="sec-place" hidden>
+        <h2>Placement</h2>
+        <div class="row">
+          <button class="btn btn-ghost btn-sm" id="rot-x" type="button" title="Rotate 90° about X (Z goes to Y). Plane 1 stays on YZ.">Rotate 90° about X</button>
+          <button class="btn btn-ghost btn-sm" id="flip-z" type="button" title="Turn 180° about Z (front and back swap). Plane 1 stays on YZ.">Flip 180° about Z</button>
+        </div>
+        <div>
+          <div class="field-label" style="margin-bottom:6px">Origin</div>
+          <div class="choices" role="radiogroup" aria-label="Origin">
+            <label><input type="radio" name="origin" value="bbox" id="or-bbox" checked><span>Box centre</span></label>
+            <label><input type="radio" name="origin" value="min" id="or-min"><span>Box min</span></label>
+            <label><input type="radio" name="origin" value="centroid" id="or-cen"><span>Centroid</span></label>
+          </div>
+        </div>
+        <table class="ext" id="ext" aria-label="Extents after reorientation"></table>
+        <div class="caption" id="place-cap"></div>
+      </div>
 
-    <div class="foot">Runs entirely in your browser; the file is not uploaded anywhere.</div>
-  </aside>
+      <div class="blk" id="sec-detail" hidden>
+        <h2>Details</h2>
+        <div class="mono" id="plane-eq"></div>
+        <div class="field-label">Plane 1 candidates</div>
+        <div class="cands" id="cands" role="radiogroup" aria-label="Plane 1 candidates"></div>
+        <div class="caption" id="move-sum"></div>
+        <details>
+          <summary>Transform matrix (input → output)</summary>
+          <pre class="mono" id="matrix"></pre>
+          <button class="btn btn-ghost btn-sm" id="copy" type="button">Copy matrix</button>
+        </details>
+      </div>
+      <div class="foot">Runs in your browser · the file is not uploaded · mm assumed</div>
+    </aside>
 
-  <main class="stage" id="stage" aria-label="3D view">
-    <canvas id="gl"></canvas>
-    <div class="bar l" role="group" aria-label="View direction">
-      <button type="button" data-view="iso">Iso</button>
-      <button type="button" data-view="x" title="Look along −X at the mirror plane">X</button>
-      <button type="button" data-view="y" title="Look along +Y: left and right halves side by side">Y</button>
-      <button type="button" data-view="z" title="Look down −Z">Z</button>
-    </div>
-    <div class="bar r">
-      <label class="chip"><input type="checkbox" id="show-plane" checked> Plane</label>
-      <label class="chip"><input type="checkbox" id="show-heat"> Deviation map</label>
-    </div>
-    <div class="legend" aria-hidden="true"><span class="x">X</span><span class="y">Y</span><span class="z">Z</span><span class="p">▭ YZ mirror plane</span></div>
-    <div class="heat" id="heat-legend" hidden>
-      <div class="ramp"></div>
-      <div class="ends"><span>0</span><label>≥ <input id="heat-max" type="number" min="0" step="any" inputmode="decimal"> mm</label></div>
-    </div>
-    <div class="drop" id="drop" hidden>Drop STL to analyse</div>
-    <div class="nogl" id="nogl" hidden>3D view unavailable (three.js did not load). Analysis and download still work.</div>
-  </main>
+    <main class="stage" id="stage" aria-label="3D view">
+      <canvas id="gl"></canvas>
+      <div class="bar l" role="group" aria-label="View direction">
+        <button class="btn btn-ghost btn-sm" type="button" data-view="iso">Iso</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-view="x" title="Look along −X at plane 1">X</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-view="y" title="Look along +Y: mirrored halves side by side">Y</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-view="z" title="Look down −Z">Z</button>
+      </div>
+      <div class="bar r">
+        <label class="toggle"><input type="checkbox" id="show-plane" checked> Planes</label>
+        <label class="toggle"><input type="checkbox" id="show-heat"> Deviation map</label>
+      </div>
+      <div class="legend" aria-hidden="true"><span class="x">X</span><span class="y">Y</span><span class="z">Z</span><span class="p">▭ Plane 1</span><span class="p2" id="leg-p2" hidden>▭ Plane 2</span></div>
+      <div class="heat" id="heat-legend" hidden>
+        <div class="choices" id="heat-which" hidden>
+          <label><input type="radio" name="heat-which" value="1" checked><span>Plane 1</span></label>
+          <label><input type="radio" name="heat-which" value="2"><span>Plane 2</span></label>
+        </div>
+        <div class="ramp"></div>
+        <div class="ends"><span>0</span><label>≥ <input id="heat-max" type="number" min="0" step="any" inputmode="decimal" value="1"> mm</label></div>
+      </div>
+      <div class="drop" id="drop" hidden>Drop STL</div>
+      <div class="nogl" id="nogl" hidden>3D view unavailable (three.js did not load). Analysis and download still work.</div>
+    </main>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
@@ -260,7 +267,7 @@ pre.mono { margin: 8px 0; padding: 10px; border: 1px solid var(--rule); border-r
 'use strict';
 const $ = s => document.querySelector(s);
 const S = window.SymCore;
-const st = { tris: null, name: '', an: null, sel: 0, rx: 0, fz: 0, origin: 'bbox', fr: null, heat: {}, heatMax: null, busy: false };
+const st = { tris: null, name: '', an: null, sel: 0, rx: 0, fz: 0, origin: 'bbox', fr: null, heat: {}, heatMax: 1, heatWhich: 1, p2on: false, p2: {}, busy: false };
 const downloadsP = window.claude && typeof window.claude.use === 'function' ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
 
 /* ---------- formatting */
@@ -273,11 +280,10 @@ function fmtLen(v) {
   if (a < 100) return v.toFixed(3);
   return v.toFixed(2);
 }
+const fmtShort = v => (!Number.isFinite(v) ? '—' : Math.abs(v) < 0.01 ? v.toFixed(4) : Math.abs(v) < 10 ? v.toFixed(3) : v.toFixed(1));
 const fmtInt = n => n.toLocaleString('en-US');
-function niceCeil(v) {
-  if (!(v > 0)) return 1;
-  const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
-  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+function rating(m) {
+  return m < 0.5 ? ['weak', 'Weak'] : m < 0.75 ? ['ok', 'OK'] : m < 0.9 ? ['good', 'Good'] : ['perfect', 'Perfect'];
 }
 
 /* ---------- status + yielding */
@@ -296,13 +302,19 @@ const paint = () => { lastYield = 0; return tick(); };
 function progress(stage, f) { setStatus(stage + (f > 0 ? ' ' + Math.round(100 * f) + ' %' : '') + ' …'); }
 function setBusy(b) {
   st.busy = b;
-  document.querySelectorAll('.panel button, .panel input, .stage input').forEach(el => { el.disabled = b; });
+  document.querySelectorAll('.panel button, .panel input:not(#use-p1), .stage input, #save').forEach(el => { el.disabled = b; });
+  if (!b) $('#save').disabled = !st.an;
   $('#open-label').setAttribute('aria-disabled', b ? 'true' : 'false');
 }
 
 /* ---------- 3D */
 const G = {};
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function makePlane(geom, color) {
+  const m = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }));
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geom), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 })));
+  return m;
+}
 function initGL() {
   if (typeof THREE === 'undefined' || !THREE.OrbitControls) { $('#nogl').hidden = false; return; }
   const canvas = $('#gl');
@@ -316,25 +328,22 @@ function initGL() {
   camera.up.set(0, 0, 1);
   const controls = new THREE.OrbitControls(camera, canvas);
   controls.enableDamping = true; controls.dampingFactor = 0.15;
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa7b4, 0.75);
-  const key = new THREE.DirectionalLight(0xffffff, 0.7);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x3a3a40, 0.8);
+  const key = new THREE.DirectionalLight(0xffffff, 0.75);
   scene.add(hemi, key, key.target);
   const geom = new THREE.BufferGeometry();
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.05, flatShading: true, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
   const mesh = new THREE.Mesh(geom, mat);
-  const pGeom = new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2);
-  const pMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false });
-  const plane = new THREE.Mesh(pGeom, pMat);
-  const pEdge = new THREE.LineSegments(new THREE.EdgesGeometry(pGeom), new THREE.LineBasicMaterial({ transparent: true, opacity: 0.8 }));
-  plane.add(pEdge);
+  const plane = makePlane(new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2), css('--plane'));          // YZ
+  const planeXZ = makePlane(new THREE.PlaneGeometry(1, 1).rotateX(Math.PI / 2), css('--plane2'));       // XZ
+  const planeXY = makePlane(new THREE.PlaneGeometry(1, 1), css('--plane2'));                            // XY
   const axes = new THREE.Group();
-  scene.add(mesh, plane, axes);
-  Object.assign(G, { renderer, scene, camera, controls, key, geom, mat, mesh, plane, pMat, pEdge, axes, dirty: true });
+  scene.add(mesh, plane, planeXZ, planeXY, axes);
+  Object.assign(G, { renderer, scene, camera, controls, key, geom, mat, mesh, plane, planeXZ, planeXY, axes, dirty: true });
   controls.addEventListener('change', () => { G.dirty = true; });
   new ResizeObserver(resize).observe($('#stage'));
   resize();
-  applyTheme();
   const loop = () => {
     requestAnimationFrame(loop);
     const moved = controls.update();
@@ -353,15 +362,12 @@ function resize() {
   G.camera.updateProjectionMatrix();
   G.dirty = true;
 }
-function applyTheme() {
-  if (!G.renderer) return;
-  G.pMat.color.set(css('--plane')); G.pEdge.material.color.set(css('--plane'));
-  buildAxes();
-  applyMaterial();
-}
-/* Vertex colours only while the deviation map for the current plane exists. */
+const heatKey = () => st.heatWhich + ':' + st.sel;
+function heatCand() { return st.heatWhich === 2 && st.p2on ? st.p2[st.sel] : st.an.candidates[st.sel]; }
+/* Vertex colours only while the deviation map for the shown plane exists. */
 function applyMaterial() {
-  const on = !!(G.heatOn && st.heat[st.sel]);
+  if (!G.renderer) return;
+  const on = !!(G.heatOn && st.heat[heatKey()]);
   G.mat.vertexColors = on;
   G.mat.color.set(on ? '#ffffff' : css('--mesh'));
   G.mat.needsUpdate = true;
@@ -371,7 +377,7 @@ function applyMaterial() {
 function textSprite(txt, color, size) {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const g = c.getContext('2d');
-  g.font = '600 44px ' + css('--font-display'); g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '700 46px ' + css('--font-display'); g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(txt, 32, 34);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
   sp.scale.set(size, size, 1); sp.renderOrder = 10;
@@ -401,20 +407,31 @@ function updateGeometry() {
   G.geom.deleteAttribute('normal');
   G.geom.computeVertexNormals();
   G.geom.computeBoundingSphere();
-  const e = st.fr.ext;
-  const hy = (e[1][1] - e[1][0]) * 1.14 || 1, hz = (e[2][1] - e[2][0]) * 1.14 || 1;
-  G.plane.scale.set(1, hy, hz);
-  G.plane.position.set(0, (e[1][0] + e[1][1]) / 2, (e[2][0] + e[2][1]) / 2);
+  const e = st.fr.ext, k = 1.14;
+  const sx = (e[0][1] - e[0][0]) * k || 1, sy = (e[1][1] - e[1][0]) * k || 1, sz = (e[2][1] - e[2][0]) * k || 1;
+  const cx = (e[0][0] + e[0][1]) / 2, cy = (e[1][0] + e[1][1]) / 2, cz = (e[2][0] + e[2][1]) / 2;
+  G.plane.scale.set(1, sy, sz); G.plane.position.set(0, cy, cz);
+  G.planeXZ.scale.set(sx, 1, sz); G.planeXZ.position.set(cx, 0, cz);
+  G.planeXY.scale.set(sx, sy, 1); G.planeXY.position.set(cx, cy, 0);
+  syncPlaneVis();
   buildAxes();
   applyMaterial();
 }
+function syncPlaneVis() {
+  if (!G.renderer) return;
+  const show = $('#show-plane').checked, p2 = st.fr && st.fr.plane2;
+  G.plane.visible = show;
+  G.planeXZ.visible = show && p2 === 'XZ';
+  G.planeXY.visible = show && p2 === 'XY';
+  G.dirty = true;
+}
 function setView(kind) {
   if (!G.renderer || !G.geom.boundingSphere) return;
-  // Frame the union of part, plane and axis arrows (drawn from the origin).
+  // Frame the union of part, planes and axis arrows (drawn from the origin).
   const e = st.fr.ext, span = Math.max(e[0][1] - e[0][0], e[1][1] - e[1][0], e[2][1] - e[2][0]), ax = 0.66 * span;
-  const my = 0.07 * (e[1][1] - e[1][0]), mz = 0.07 * (e[2][1] - e[2][0]);
-  const lo = [Math.min(e[0][0], 0), Math.min(e[1][0] - my, 0), Math.min(e[2][0] - mz, 0)];
-  const hi = [Math.max(e[0][1], ax), Math.max(e[1][1] + my, ax), Math.max(e[2][1] + mz, ax)];
+  const mx = 0.07 * (e[0][1] - e[0][0]), my = 0.07 * (e[1][1] - e[1][0]), mz = 0.07 * (e[2][1] - e[2][0]);
+  const lo = [Math.min(e[0][0] - mx, 0), Math.min(e[1][0] - my, 0), Math.min(e[2][0] - mz, 0)];
+  const hi = [Math.max(e[0][1] + mx, ax), Math.max(e[1][1] + my, ax), Math.max(e[2][1] + mz, ax)];
   const c = new THREE.Vector3((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
   const r = 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 0.92 || 1;
   const dist = (r / Math.sin((Math.min(G.camera.fov, G.camera.fov * G.camera.aspect) * Math.PI) / 360)) * 1.02;
@@ -428,32 +445,29 @@ function setView(kind) {
 }
 
 /* ---------- deviation map */
-function heatScale() {
-  const c = st.an.candidates[st.sel];
-  return st.heatMax != null ? st.heatMax : niceCeil(Math.max(3 * c.p95, 1e-3 * st.an.mesh.L));
-}
 function colorHeat() {
-  const vals = st.heat[st.sel];
+  const vals = st.heat[heatKey()];
   if (!G.renderer || !vals) return;
   const c0 = new THREE.Color(css('--heat-0')), c1 = new THREE.Color(css('--heat-1')), c2 = new THREE.Color(css('--heat-2'));
-  const n = vals.length, col = new Float32Array(9 * n), max = heatScale(), tmp = new THREE.Color();
+  const n = vals.length, col = new Float32Array(9 * n), max = st.heatMax, tmp = new THREE.Color();
   for (let t = 0; t < n; t++) {
     const f = Math.min(1, vals[t] / max);
     if (f < 0.5) tmp.copy(c0).lerp(c1, f * 2); else tmp.copy(c1).lerp(c2, (f - 0.5) * 2);
     for (let k = 0; k < 3; k++) { col[9 * t + 3 * k] = tmp.r; col[9 * t + 3 * k + 1] = tmp.g; col[9 * t + 3 * k + 2] = tmp.b; }
   }
   G.geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  $('#heat-max').value = +max.toPrecision(3);
   G.dirty = true;
 }
 async function setHeat(on) {
   G.heatOn = on;
   $('#heat-legend').hidden = !on;
+  $('#heat-which').hidden = !st.p2on;
   if (!G.renderer) return;
-  if (on && !st.heat[st.sel]) {
+  const cand = heatCand();
+  if (on && cand && !st.heat[heatKey()]) {
     setBusy(true);
     try {
-      st.heat[st.sel] = await S.deviationMap(st.an, st.an.candidates[st.sel], { tick, progress });
+      st.heat[heatKey()] = await S.deviationMap(st.an, cand, { tick, progress });
       setStatus('Deviation map ready. Warm colours show where the mirror image misses the surface.');
     } finally { setBusy(false); }
   }
@@ -461,59 +475,83 @@ async function setHeat(on) {
 }
 
 /* ---------- panel */
-function renderPlane() {
-  const an = st.an, c = an.candidates[st.sel];
-  $('#match').textContent = (100 * c.match).toFixed(1) + ' %';
-  const cls = c.match >= 0.95 ? 'good' : c.match >= 0.75 ? 'warn' : 'bad';
-  const pill = $('#pill');
-  pill.className = 'pill ' + cls;
-  pill.textContent = { good: 'Strong symmetry', warn: 'Partial symmetry', bad: 'Weak symmetry' }[cls];
-  $('#match-cap').textContent = `of the surface mirrors onto itself within ${fmtLen(c.tol)} mm (0.1 % of the part's diagonal).`;
-  $('#st-med').textContent = fmtLen(c.median);
-  $('#st-p95').textContent = fmtLen(c.p95);
-  $('#st-max').textContent = (c.capped ? '> ' : '') + fmtLen(c.max);
+function fillBand(i, c) {
+  const [cls, txt] = rating(c.match);
+  const chip = $('#chip' + i);
+  chip.className = 'chip ' + cls; chip.textContent = txt;
+  $(`#b${i}-match`).textContent = (100 * c.match).toFixed(1) + '%';
+  $(`#b${i}-med`).textContent = fmtShort(c.median);
+  $(`#b${i}-p95`).textContent = fmtShort(c.p95);
+  $(`#b${i}-max`).textContent = (c.capped ? '>' : '') + fmtShort(c.max);
+}
+function renderPlanes() {
+  const an = st.an, c = an.candidates[st.sel], c2 = st.p2on ? st.p2[st.sel] : null;
+  fillBand(1, c);
+  $('#band2').hidden = !c2;
+  if (c2) fillBand(2, c2);
   const f6 = v => (v < 0 ? '−' : ' ') + Math.abs(v).toFixed(6);
-  $('#plane-eq').textContent = 'Plane in input coordinates, n·x = d\n' +
-    `n = (${f6(c.n[0])}, ${f6(c.n[1])}, ${f6(c.n[2])})\nd = ${(c.d < 0 ? '−' : '') + fmtLen(Math.abs(c.d))}`;
+  const eq = (t, p) => `${t}: n = (${f6(p.n[0])}, ${f6(p.n[1])}, ${f6(p.n[2])})  d = ${(p.d < 0 ? '−' : '') + fmtLen(Math.abs(p.d))}`;
+  $('#plane-eq').textContent = 'Planes in input coordinates, n·x = d\n' + eq('1', c) + (c2 ? '\n' + eq('2', c2) : '');
   const box = $('#cands');
   box.innerHTML = '';
-  if (an.candidates.length > 1) {
-    const n0 = an.candidates[0].n;
-    an.candidates.forEach((cd, i) => {
-      const ang = (Math.acos(Math.min(1, Math.abs(cd.n[0] * n0[0] + cd.n[1] * n0[1] + cd.n[2] * n0[2]))) * 180) / Math.PI;
-      const lab = document.createElement('label');
-      lab.className = 'cand';
-      lab.innerHTML = `<input type="radio" name="cand" value="${i}" id="cand-${i}"${i === st.sel ? ' checked' : ''}>` +
-        `<span class="t">Plane ${i + 1} · ${(100 * cd.match).toFixed(1)} %</span>` +
-        `<span class="s">P95 ${fmtLen(cd.p95)} mm${i ? ` · ${ang.toFixed(1)}° from plane 1` : ' · best fit'}</span>`;
-      lab.querySelector('input').addEventListener('change', () => selectCand(i));
-      box.appendChild(lab);
-    });
-  }
+  const n0 = an.candidates[0].n;
+  an.candidates.forEach((cd, i) => {
+    const ang = (Math.acos(Math.min(1, Math.abs(cd.n[0] * n0[0] + cd.n[1] * n0[1] + cd.n[2] * n0[2]))) * 180) / Math.PI;
+    const lab = document.createElement('label');
+    lab.className = 'check';
+    lab.innerHTML = `<input type="radio" name="cand" value="${i}" id="cand-${i}"${i === st.sel ? ' checked' : ''}>` +
+      `<span class="t">Candidate ${i + 1} · ${(100 * cd.match).toFixed(1)}%</span>` +
+      `<span class="s">P95 ${fmtLen(cd.p95)} mm${i ? ` · ${ang.toFixed(1)}° from candidate 1` : ' · best fit'}</span>`;
+    lab.querySelector('input').addEventListener('change', () => selectCand(i));
+    box.appendChild(lab);
+  });
+  $('#leg-p2').hidden = !c2;
 }
 function renderPlacement() {
-  const e = st.fr.ext;
+  const e = st.fr.ext, p2 = st.fr.plane2;
   const rows = [['X', 'x', e[0]], ['Y', 'y', e[1]], ['Z', 'z', e[2]]];
   $('#ext').innerHTML = '<tr><th></th><td>min</td><td>max</td><td>size</td></tr>' +
     rows.map(([t, c, r]) => `<tr><th class="${c}">${t}</th><td>${fmtLen(r[0])}</td><td>${fmtLen(r[1])}</td><td>${fmtLen(r[1] - r[0])}</td></tr>`).join('');
+  $('#place-cap').textContent = 'X = 0 is plane 1' + (p2 ? `, ${p2 === 'XZ' ? 'Y' : 'Z'} = 0 is plane 2 (${p2})` : '') +
+    '. Box min puts the free axes at their minimum, so those values are all positive.';
   const M = st.fr.M;
   const f = v => (v < 0 ? '−' : ' ') + Math.abs(v).toFixed(6);
   $('#matrix').textContent = [0, 1, 2, 3].map(i => [0, 1, 2, 3].map(j => f(M[4 * i + j])).join('  ')).join('\n');
   const R = st.fr.R, tr = R[0] + R[4] + R[8];
   const ang = (Math.acos(Math.max(-1, Math.min(1, (tr - 1) / 2))) * 180) / Math.PI;
-  $('#move-sum').textContent = `Rotation ${ang.toFixed(2)}°, translation ${fmtLen(Math.hypot(M[3], M[7], M[11]))} mm. Binary STL, same triangles, same winding.`;
+  $('#move-sum').textContent = `Rotation ${ang.toFixed(2)}°, translation ${fmtLen(Math.hypot(M[3], M[7], M[11]))} mm. Output: binary STL, same triangles, same winding, never mirrored.`;
 }
 function recompute(refit) {
-  st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin });
+  const second = st.p2on ? st.p2[st.sel] : null;
+  st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin, second });
   renderPlacement();
   updateGeometry();
   setView(refit ? 'iso' : 'keep');
 }
+async function ensurePlane2() {
+  if (!st.p2on || st.p2[st.sel]) return;
+  setBusy(true);
+  try {
+    const r = await S.secondPlane(st.an, st.an.candidates[st.sel], { tick, progress });
+    st.p2[st.sel] = r[0] || null;
+    setStatus(r[0] ? 'Plane 2 found.' : 'No perpendicular plane found.', !r[0]);
+  } finally { setBusy(false); }
+}
 async function selectCand(i) {
   st.sel = i;
-  renderPlane();
+  await ensurePlane2();
+  renderPlanes();
   recompute(false);
   if (G.heatOn) await setHeat(true);
+}
+async function togglePlane2(on) {
+  st.p2on = on;
+  if (!on && st.heatWhich === 2) { st.heatWhich = 1; document.querySelector('input[name="heat-which"][value="1"]').checked = true; }
+  await ensurePlane2();
+  renderPlanes();
+  recompute(false);
+  $('#heat-which').hidden = !on;
+  applyMaterial();
 }
 
 /* ---------- load + analyse */
@@ -524,14 +562,16 @@ async function analyseBuffer(buf, name, note) {
     setStatus('Reading ' + name + ' …'); await paint();
     const tris = S.parseSTL(buf);
     const an = await S.analyse(tris, { tick, progress });
-    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, heat: {}, heatMax: null });
+    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, heat: {}, p2: {} });
     $('#file-name').textContent = name;
     $('#file-meta').textContent = `${fmtInt(tris.length / 9)} triangles` + (note ? ' · ' + note : '');
-    ['#sec-plane', '#sec-place', '#sec-export'].forEach(s => { $(s).hidden = false; });
-    renderPlane();
-    recompute(true);
+    ['#sec-planes', '#sec-band', '#sec-place', '#sec-detail'].forEach(s => { $(s).hidden = false; });
     setStatus(`Analysed in ${(an.ms / 1000).toFixed(1)} s.`);
-    if (G.heatOn) { setBusy(false); await setHeat(true); }
+    setBusy(false);
+    await ensurePlane2();
+    renderPlanes();
+    recompute(true);
+    if (G.heatOn) await setHeat(true);
   } catch (e) {
     setStatus('Could not analyse ' + name + ': ' + (e && e.message ? e.message : e), true);
   } finally { setBusy(false); }
@@ -544,7 +584,7 @@ async function openFile(file) {
 
 /* ---------- export */
 async function save() {
-  if (!st.an) return;
+  if (!st.an || st.busy) return;
   const out = S.writeSTL(S.transform(st.tris, st.fr.M), 'stl-reorient: mirror plane on YZ (x = 0)');
   const base = st.name.replace(/\.stl$/i, '') + '_reoriented';
   const dl = await downloadsP;
@@ -572,6 +612,7 @@ $('#open-label').addEventListener('click', e => { if (st.busy) e.preventDefault(
 $('#rot-x').addEventListener('click', () => { st.rx = (st.rx + 1) & 3; recompute(false); });
 $('#flip-z').addEventListener('click', () => { st.fz ^= 1; recompute(false); });
 document.querySelectorAll('input[name="origin"]').forEach(r => r.addEventListener('change', () => { st.origin = r.value; recompute(false); }));
+$('#use-p2').addEventListener('change', e => { if (st.an) togglePlane2(e.target.checked); });
 $('#save').addEventListener('click', save);
 $('#copy').addEventListener('click', () => {
   const txt = $('#matrix').textContent;
@@ -580,11 +621,11 @@ $('#copy').addEventListener('click', () => {
   catch (e) { sel(); setStatus('Matrix selected. Press Ctrl/⌘+C to copy.'); }
 });
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
-$('#show-plane').addEventListener('change', e => { if (G.plane) { G.plane.visible = e.target.checked; G.dirty = true; } });
+$('#show-plane').addEventListener('change', syncPlaneVis);
 $('#show-heat').addEventListener('change', e => { if (st.an) setHeat(e.target.checked); });
-$('#heat-max').addEventListener('change', e => { const v = parseFloat(e.target.value); st.heatMax = v > 0 ? v : null; applyMaterial(); });
+document.querySelectorAll('input[name="heat-which"]').forEach(r => r.addEventListener('change', () => { st.heatWhich = +r.value; if (G.heatOn) setHeat(true); }));
+$('#heat-max').addEventListener('change', e => { const v = parseFloat(e.target.value); st.heatMax = v > 0 ? v : 1; e.target.value = st.heatMax; applyMaterial(); });
 
-const stage = $('#stage');
 let dragDepth = 0;
 window.addEventListener('dragenter', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { dragDepth++; $('#drop').hidden = false; } });
 window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#drop').hidden = true; });
@@ -594,17 +635,12 @@ window.addEventListener('drop', e => {
   const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
   if (f) openFile(f);
 });
-void stage;
-
-const mq = window.matchMedia('(prefers-color-scheme: dark)');
-(mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(applyTheme);
-new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 initGL();
 
 // Opens on a worked example: synthetic seat post, deliberately tilted, with a one-sided logo emboss.
 const demo = S.rigid(S.seatPost({ seg: 96, nz: 20 }), S.rotationXYZ(0.41, -0.72, 1.17), [37.2, -120.5, 12.8]);
-analyseBuffer(S.writeSTL(demo), 'example-seatpost-tilted.stl', 'built-in example; open your own STL to replace it');
+analyseBuffer(S.writeSTL(demo), 'example-seatpost-tilted.stl', 'built-in example; upload your own STL to replace it');
 })();
 </script>
 </body>

@@ -159,5 +159,30 @@ console.log('# free rotation: tube axis must come out exactly on Z (clean box 28
   check(Math.abs(size[0] - 28) < 2e-3 && Math.abs(size[1] - 60) < 2e-3 && Math.abs(size[2] - 309) < 2e-3, 'box is 28 × 60 × 309 within 0.002');
 }
 
+console.log('# second plane (locked perpendicular to plane 1)');
+{
+  const B = []; box(B, -50, 50, -30, 30, -15, 15);
+  const p = posed(new Float32Array(B), 71);
+  const an = await S.analyse(p.tris);
+  const c1 = an.candidates[0];
+  const [c2] = await S.secondPlane(an, c1);
+  const dp = Math.abs(c1.n[0] * c2.n[0] + c1.n[1] * c2.n[1] + c1.n[2] * c2.n[2]);
+  check(dp < 1e-9 && c2.median < 1e-3 && c2.match > 0.99, `box: plane 2 ⊥ plane 1 (|n1·n2| ${dp.toExponential(1)}), median ${c2.median.toExponential(2)}, match ${(100 * c2.match).toFixed(1)}%`);
+  for (const rx of [0, 1]) {
+    const f = S.frame(an, c1, { origin: 'bbox', second: c2, rx });
+    const out = S.transform(p.tris, f.M);
+    let m = [1e9, 1e9, 1e9], M = [-1e9, -1e9, -1e9];
+    for (let i = 0; i < out.length; i += 3) for (let k = 0; k < 3; k++) { m[k] = Math.min(m[k], out[i + k]); M[k] = Math.max(M[k], out[i + k]); }
+    const ax = f.plane2 === 'XZ' ? 1 : 2;
+    check(Math.abs(m[0] + M[0]) < 1e-3 && Math.abs(m[ax] + M[ax]) < 1e-3,
+      `box rx=${rx}: plane 2 → ${f.plane2}, extents ${m.map((v, k) => v.toFixed(3) + '..' + M[k].toFixed(3)).join(' | ')}`);
+  }
+  const sp = posed(S.seatPost(), 72);
+  const an2 = await S.analyse(sp.tris);
+  const [s2] = await S.secondPlane(an2, an2.candidates[0]);
+  console.log(`  seat post plane 2 (setback → should be poor): match ${(100 * s2.match).toFixed(1)}%, P95 ${s2.p95.toFixed(2)} mm`);
+  check(s2.match < 0.97, 'seat post: plane 2 reported worse than plane 1');
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
