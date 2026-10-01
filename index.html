@@ -158,6 +158,10 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
 .toggle { display: inline-flex; align-items: center; gap: 8px; border: 2px solid var(--rule); background: var(--bg); padding: 0 10px; min-height: 2.25rem; cursor: pointer; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; font-size: 0.9375rem; user-select: none; }
 .toggle input { margin: 0; accent-color: var(--accent); }
 .legend { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 12px; align-items: center; background: var(--bg); border: 2px solid var(--line); padding: 6px 10px; font: 700 13px/1 var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; flex-wrap: wrap; }
+.legend { cursor: pointer; user-select: none; }
+.legend:hover { border-color: var(--rule); }
+.legend .ax { font: inherit; letter-spacing: inherit; text-transform: inherit; background: transparent; border: 0; padding: 2px 4px; margin: -2px -4px; cursor: pointer; }
+.legend .ax:hover, .legend .ax:focus-visible { background: var(--ink); color: var(--bg); }
 .legend .x { color: var(--ax-x); } .legend .y { color: var(--ax-y); } .legend .z { color: var(--ax-z); } .legend .p { color: var(--plane); } .legend .p2 { color: var(--plane2); }
 .heat { position: absolute; right: 12px; bottom: 12px; background: var(--bg); border: 2px solid var(--line); padding: 8px 10px; font: 12px/1 var(--font-mono); display: grid; gap: 8px; width: min(260px, 60%); }
 .heat .ramp { height: 8px; background: linear-gradient(90deg, var(--heat-0), var(--heat-1), var(--heat-2)); }
@@ -277,7 +281,7 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
         <label class="toggle"><input type="checkbox" id="show-plane" checked> Planes</label>
         <label class="toggle"><input type="checkbox" id="show-heat"> Deviation map</label>
       </div>
-      <div class="legend" aria-hidden="true"><span class="x">X</span><span class="y">Y</span><span class="z">Z</span><span class="p" id="leg-p1" hidden>▭ Mirror plane · step 1</span><span class="p2" id="leg-p2" hidden>▭ Mirror plane · step 2</span></div>
+      <div class="legend" id="legend" role="group" aria-label="Axes: click an axis for that view, anything else for the isometric view" title="Click X, Y or Z for that view. Click anywhere else here for the isometric view."><button type="button" class="ax x" data-view="x">X</button><button type="button" class="ax y" data-view="y">Y</button><button type="button" class="ax z" data-view="z">Z</button><span class="p" id="leg-p1" hidden>▭ Mirror plane · step 1</span><span class="p2" id="leg-p2" hidden>▭ Mirror plane · step 2</span></div>
       <div class="heat" id="heat-legend" hidden>
         <div class="choices" id="heat-which" hidden>
           <label><input type="radio" name="heat-which" value="1" checked><span>Plane 1</span></label>
@@ -927,7 +931,9 @@ $('#copy').addEventListener('click', () => {
   try { navigator.clipboard.writeText(txt).then(() => setStatus('Matrix copied.'), () => { sel(); setStatus('Matrix selected. Press Ctrl/⌘+C to copy.'); }); }
   catch (e) { sel(); setStatus('Matrix selected. Press Ctrl/⌘+C to copy.'); }
 });
-document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); setView(b.dataset.view); }));
+// Anything in the legend that is not X, Y or Z gives the isometric view.
+$('#legend').addEventListener('click', () => setView('iso'));
 $('#show-plane').addEventListener('change', syncPlaneVis);
 $('#show-heat').addEventListener('change', e => { if (st.an) setHeat(e.target.checked); });
 document.querySelectorAll('input[name="heat-which"]').forEach(r => r.addEventListener('change', () => { st.heatWhich = +r.value - 1; if (G.heatOn) setHeat(true); }));
