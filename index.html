@@ -649,7 +649,7 @@ function renderPlacement() {
   $('#matrix').textContent = [0, 1, 2, 3].map(i => [0, 1, 2, 3].map(j => f(M[4 * i + j])).join('  ')).join('\n');
   const R = st.fr.R, tr = R[0] + R[4] + R[8];
   const ang = (Math.acos(Math.max(-1, Math.min(1, (tr - 1) / 2))) * 180) / Math.PI;
-  $('#move-sum').textContent = `Rotation ${ang.toFixed(2)}°, translation ${fmtLen(Math.hypot(M[3], M[7], M[11]))} mm. Output: binary STL, same triangles, same winding, never mirrored.`;
+  $('#move-sum').textContent = `Rotation ${ang.toFixed(2)}°, translation ${fmtLen(Math.hypot(M[3], M[7], M[11]))} mm.`;
 }
 function recompute(refit) {
   const second = st.p2on ? st.p2[st.sel] : null;
