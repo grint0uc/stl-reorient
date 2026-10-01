@@ -1096,6 +1096,119 @@ function extrusionAxes(mesh, n) {
   return out.filter(o => o.share >= 0.4 * (out[0] ? out[0].share : 0));
 }
 
+/* Large flat regions whose normal lies (nearly) in the mirror plane, so they can be turned onto ±Z without
+   breaking YZ. Triangles are grouped by in-plane normal angle (0.25° histogram, sign folded so mixed winding
+   does not split a face), then by plane offset; each group is refit as a plane (area-weighted PCA of its
+   triangles) and kept if it is genuinely flat. Returns up to 6 planes, largest first, with the outward normal. */
+/* Largest connected piece of a triangle set: triangles sharing a vertex (STL facets of one face do) are joined. */
+function largestPiece(sel, V, A) {
+  const owner = new Map(), parent = sel.map((_, i) => i);
+  const find = i => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+  sel.forEach((t, i) => {
+    const b = 9 * t;
+    for (let j = 0; j < 9; j += 3) {
+      const k = Math.round(V[b + j] * 1e6) + ',' + Math.round(V[b + j + 1] * 1e6) + ',' + Math.round(V[b + j + 2] * 1e6);
+      const o = owner.get(k);
+      if (o === undefined) owner.set(k, i); else parent[find(i)] = find(o);
+    }
+  });
+  const area = new Map();
+  sel.forEach((t, i) => { const r = find(i); area.set(r, (area.get(r) || 0) + A[t]); });
+  let best = -1, bestA = -1;
+  for (const [r, a] of area) if (a > bestA) { bestA = a; best = r; }
+  return sel.filter((t, i) => find(i) === best);
+}
+
+function flatPlanes(mesh, n) {
+  const B = tangentBasis(n[0], n[1], n[2]), u = [B[0], B[1], B[2]], v = [B[3], B[4], B[5]];
+  const N = mesh.N, A = mesh.A, V = mesh.V, T = mesh.n, NB = 720;
+  const th = new Float32Array(T), H = new Float64Array(NB), lim = Math.sin((15 * Math.PI) / 180);
+  for (let t = 0; t < T; t++) {
+    const x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2];
+    if (Math.abs(x * n[0] + y * n[1] + z * n[2]) > lim) { th[t] = -1; continue; }
+    let a = Math.atan2(x * v[0] + y * v[1] + z * v[2], x * u[0] + y * u[1] + z * u[2]);
+    if (a < 0) a += Math.PI;
+    if (a >= Math.PI) a -= Math.PI;
+    th[t] = a;
+    H[Math.min(NB - 1, Math.floor((a / Math.PI) * NB))] += A[t];
+  }
+  const sm = new Float64Array(NB);
+  for (let i = 0; i < NB; i++) for (let k = -3; k <= 3; k++) sm[i] += H[(i + k + NB) % NB] * Math.exp(-k * k / 4);
+  const peaks = [];
+  for (let i = 0; i < NB; i++) {
+    let m = sm[i] > 0;
+    for (let k = 1; k <= 6 && m; k++) if (sm[(i + k) % NB] > sm[i] || sm[(i - k + NB) % NB] > sm[i]) m = false;
+    if (m) peaks.push(i);
+  }
+  peaks.sort((a, b) => sm[b] - sm[a]);
+  const cen = mesh.centroid, tol = 0.0025, win = (2 * Math.PI) / 180, out = [];
+  for (const pk of peaks.slice(0, 12)) {
+    const a0 = ((pk + 0.5) / NB) * Math.PI, d0 = [0, 1, 2].map(k => Math.cos(a0) * u[k] + Math.sin(a0) * v[k]);
+    // Offsets of the triangles facing this way, binned at the flatness tolerance.
+    const idx = [], off = [];
+    for (let t = 0; t < T; t++) {
+      if (th[t] < 0) continue;
+      let da = Math.abs(th[t] - a0); da = Math.min(da, Math.PI - da);
+      if (da > win) continue;
+      const b = 9 * t;
+      idx.push(t); off.push(d0[0] * (V[b] + V[b + 3] + V[b + 6]) / 3 + d0[1] * (V[b + 1] + V[b + 4] + V[b + 7]) / 3 + d0[2] * (V[b + 2] + V[b + 5] + V[b + 8]) / 3);
+    }
+    const bins = new Map();
+    for (let i = 0; i < idx.length; i++) { const k = Math.round(off[i] / tol); bins.set(k, (bins.get(k) || 0) + A[idx[i]]); }
+    const keys = [...bins.keys()].sort((a, b) => bins.get(b) - bins.get(a)).slice(0, 4); // up to 4 parallel faces
+    for (const kb of keys) {
+      let sel = idx.filter((t, i) => Math.abs(off[i] - kb * tol) <= 1.5 * tol);
+      let nrm = d0, dd = kb * tol, rms = 0, area = 0, c = [0, 0, 0], ev = null;
+      for (let it = 0; it < 3 && sel.length; it++) { // area-weighted plane fit; re-select within tolerance between fits
+        if (it) sel = idx.filter(t => {
+          const b = 9 * t, x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2];
+          const pc = [(V[b] + V[b + 3] + V[b + 6]) / 3, (V[b + 1] + V[b + 4] + V[b + 7]) / 3, (V[b + 2] + V[b + 5] + V[b + 8]) / 3];
+          return Math.abs(x * nrm[0] + y * nrm[1] + z * nrm[2]) > Math.cos(win) && Math.abs(dot3(nrm, pc) - dd) <= tol;
+        });
+        if (!sel.length) break;
+        if (it === 2) sel = largestPiece(sel, V, A); // last fit on one connected face only
+        const M = [0, 0, 0, 0, 0, 0, 0, 0, 0]; c = [0, 0, 0]; area = 0;
+        for (const t of sel) { const b = 9 * t; for (let k = 0; k < 3; k++) c[k] += A[t] * (V[b + k] + V[b + 3 + k] + V[b + 6 + k]) / 3; area += A[t]; }
+        c = c.map(x => x / area);
+        for (const t of sel) {
+          const b = 9 * t;
+          for (let j = 0; j < 9; j += 3) {
+            const p = [V[b + j] - c[0], V[b + j + 1] - c[1], V[b + j + 2] - c[2]];
+            for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) M[3 * r + q] += A[t] * p[r] * p[q];
+          }
+        }
+        ev = eigSym3(M);
+        nrm = norm3(ev[2].vec);
+        if (dot3(nrm, d0) < 0) nrm = nrm.map(x => -x);
+        dd = dot3(nrm, c);
+      }
+      if (!sel.length || !ev) continue;
+      // Width of the region (from the in-plane spread): rejects single facet rows of a tessellated cylinder.
+      const width = Math.sqrt((Math.max(0, ev[1].val) / (3 * area)) * 12); // full width of an equivalent uniform strip
+      if (width < 0.01) continue;
+      let s2 = 0; area = 0;
+      for (const t of sel) { const b = 9 * t, pc = [(V[b] + V[b + 3] + V[b + 6]) / 3, (V[b + 1] + V[b + 4] + V[b + 7]) / 3, (V[b + 2] + V[b + 5] + V[b + 8]) / 3], e = dot3(nrm, pc) - dd; s2 += A[t] * e * e; area += A[t]; }
+      rms = Math.sqrt(s2 / area);
+      if (rms > 0.5 * tol || area < 0.003 * mesh.area) continue; // not flat, or too small to matter
+      let sw = 0;
+      for (const t of sel) sw += A[t] * Math.sign(N[3 * t] * nrm[0] + N[3 * t + 1] * nrm[1] + N[3 * t + 2] * nrm[2]);
+      // Outward = the faces' own normal side; if winding is mixed, the side facing away from the centroid.
+      const flip = Math.abs(sw) > 0.8 * area ? sw < 0 : dot3(nrm, c) - dot3(nrm, cen) < 0;
+      const outward = flip ? nrm.map(x => -x) : nrm;
+      if (out.some(o => Math.abs(dot3(o.dirN, outward)) > Math.cos(win) && Math.abs(dot3(o.dirN, c) - dot3(o.dirN, o.c)) < 2 * tol)) continue;
+      out.push({ dirN: outward, c, area, rms, tris: sel });
+    }
+  }
+  out.sort((a, b) => b.area - a.area);
+  const L = mesh.L, total = mesh.area;
+  return out.slice(0, 6).map(o => ({
+    dir: o.dirN, // normalisation preserves directions
+    area: o.area * L * L, share: o.area / total, rms: o.rms * L,
+    tilt: (Math.asin(Math.min(1, Math.abs(dot3(o.dirN, n)))) * 180) / Math.PI,
+    tris: Uint32Array.from(o.tris, t => mesh.src[t]),
+  }));
+}
+
 /* Stateful wrapper so the heavy work can live in a Web Worker: every call returns { value, transfer }. */
 function engine() {
   let an = null;
@@ -1114,6 +1227,7 @@ function engine() {
     },
     async feature(p, nrm) { return { value: pickFeature(an, p, nrm) }; },
     async extrude(i) { return { value: extrusionAxes(an.mesh, an.candidates[i].nN) }; },
+    async flats(i) { const v = flatPlanes(an.mesh, an.candidates[i].nN); return { value: v, transfer: v.map(p => p.tris.buffer) }; },
   };
 }
 
@@ -1198,7 +1312,7 @@ function rigid(tris, R, t) {
 
 const SymCore = {
   parseSTL, writeSTL, zipOne, crc32,
-  analyse, secondPlane, frame, transform, deviationMap, pickFeature, extrusionAxes, engine,
+  analyse, secondPlane, frame, transform, deviationMap, pickFeature, extrusionAxes, flatPlanes, engine,
   seatPost, rotationXYZ, rigid,
   _internal: { prepareMesh, sampleSurface, KDTree, BVH, eigSym3, refinePlane, mirrorDistances, fibHemisphere, closestPtTri, CP },
 };

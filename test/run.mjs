@@ -196,5 +196,15 @@ for (const [o, seed] of [[{}, 81], [{ head: 0.5 }, 82], [{ seg: 360, nz: 120 }, 
   check(ang < 0.01, `${JSON.stringify(o)}: axis 1 is ${ang.toExponential(2)}° from the tube axis (${(100 * ax[0].share).toFixed(1)} % of side walls, ${ax.length} candidate(s))`);
 }
 
+console.log('# flat faces (in the mirror plane)');
+{
+  const E = S.engine(); await E.analyse(S.seatPost({ logo: false }));
+  const f = (await E.flats(0)).value;
+  const ok = f.length >= 4 && f.slice(0, 4).every(p => Math.abs(Math.abs(p.dir[2]) - 1) < 1e-6 && p.rms < 1e-6);
+  check(ok, `seat post clamp: ${f.length} flat faces, top 4 horizontal and exact (areas ${f.slice(0, 4).map(p => Math.round(p.area)).join(', ')} mm²)`);
+  const z = f.map(p => Math.sign(p.dir[2]));
+  check(z.slice(0, 4).join() === '1,-1,-1,1', `outward sides from face normals: ${z.slice(0, 4).join(', ')}`);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

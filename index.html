@@ -118,7 +118,14 @@ table.ext { width: 100%; border-collapse: collapse; font: 13px/1.5 var(--font-mo
 th.x { color: var(--ax-x); } th.y { color: var(--ax-y); } th.z { color: var(--ax-z); }
 .caption { font-size: 12.5px; color: var(--muted); }
 
-.cands { display: flex; flex-direction: column; gap: 6px; }
+.cands, .opts { display: flex; flex-direction: column; gap: 6px; }
+.step { display: grid; gap: 8px; }
+.step + .step { padding-top: 12px; border-top: 2px solid var(--line); }
+.step-h { display: flex; align-items: center; gap: 10px; }
+.step-n { width: 1.6rem; height: 1.6rem; display: grid; place-items: center; background: var(--ink); color: var(--bg); font: 700 1rem/1 var(--font-display); }
+.step-t { font: 700 1.2rem/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.02em; }
+.check input[type="radio"] { accent-color: var(--ink); }
+#next-opt { justify-self: start; }
 details summary { cursor: pointer; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; color: var(--ink-soft); }
 pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); background: var(--bg); }
 .foot { padding: 16px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted); }
@@ -175,7 +182,7 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
 <div class="app">
   <header class="top">
     <div class="top-in">
-      <div class="brand"><span class="display">STL Reorient</span><span class="eyebrow muted">Mirror plane → YZ</span></div>
+      <div class="brand"><span class="display">STL Reorient</span><span class="eyebrow muted">Reorient by alignment</span></div>
       <div class="actions">
         <label class="btn btn-ghost" for="file" tabindex="0" id="open-label">Upload STL</label>
         <input id="file" type="file" accept=".stl,model/stl,application/sla" hidden>
@@ -192,14 +199,39 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
         <div class="status" id="status" role="status" aria-live="polite"></div>
       </div>
 
-      <div class="blk" id="sec-planes" hidden>
-        <p class="eyebrow muted" style="margin:0">Mirror planes</p>
-        <label class="check"><input type="checkbox" id="use-p1" checked disabled><span class="t">Plane 1 → YZ</span><span class="s">Best mirror plane. Always used.</span></label>
-        <label class="check"><input type="checkbox" id="use-p2"><span class="t">Plane 2 → XZ</span><span class="s">Best mirror plane perpendicular to plane 1. Fixes the remaining rotation.</span></label>
+      <div class="blk" id="sec-align" hidden>
+        <h2>Alignment</h2>
+        <div class="step">
+          <div class="step-h"><span class="step-n">1</span><span class="step-t">Mirror plane → YZ</span></div>
+          <div class="cands" id="cands" role="radiogroup" aria-label="Mirror plane candidates"></div>
+        </div>
+        <div class="step">
+          <div class="step-h"><span class="step-n">2</span><span class="step-t">What goes on Z</span></div>
+          <div class="opts" role="radiogroup" aria-label="Second alignment">
+            <label class="check"><input type="radio" name="align2" value="auto" checked><span class="t">Long axis</span><span class="s">Automatic: longest direction of the part.</span></label>
+            <label class="check"><input type="radio" name="align2" value="extrude"><span class="t">Extrusion axis</span><span class="s">Direction the side walls run along (tube, extrusion, sweep).</span></label>
+            <label class="check"><input type="radio" name="align2" value="flat"><span class="t">Flat face</span><span class="s">Largest flat face, set on the floor or facing up.</span></label>
+            <label class="check"><input type="radio" name="align2" value="plane2"><span class="t">Second mirror plane → XZ</span><span class="s">Best mirror plane perpendicular to the first.</span></label>
+            <label class="check"><input type="radio" name="align2" value="pick"><span class="t">Picked feature</span><span class="s">Click a flat face or round surface on the model.</span></label>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="next-opt" type="button" hidden>Next option</button>
+        </div>
+        <div class="step">
+          <div class="step-h"><span class="step-n">3</span><span class="step-t">Fine-tune and origin</span></div>
+          <div class="row">
+            <button class="btn btn-ghost btn-sm" id="rot-x" type="button" title="Rotate 90° about X (Z goes to Y). The mirror plane stays on YZ.">Rotate 90° about X</button>
+            <button class="btn btn-ghost btn-sm" id="flip-z" type="button" title="Turn 180° about Z (front and back swap). The mirror plane stays on YZ.">Flip 180° about Z</button>
+          </div>
+          <div class="choices" role="radiogroup" aria-label="Origin">
+            <label><input type="radio" name="origin" value="bbox" id="or-bbox" checked><span>Box centre</span></label>
+            <label><input type="radio" name="origin" value="min" id="or-min"><span>Box min</span></label>
+            <label><input type="radio" name="origin" value="centroid" id="or-cen"><span>Centroid</span></label>
+          </div>
+        </div>
       </div>
 
       <div class="band" id="sec-band" hidden>
-        <div class="band-head"><span class="display">Plane 1</span><span class="chip" id="chip1">—</span></div>
+        <div class="band-head"><span class="display">Mirror plane 1</span><span class="chip" id="chip1">—</span></div>
         <div class="band-row">
           <div><div class="num" id="b1-p95">—</div><div class="lab">95 % within mm</div></div>
           <div><div class="num sm" id="b1-med">—</div><div class="lab">median mm</div></div>
@@ -207,7 +239,7 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
           <div><div class="num sm" id="b1-max">—</div><div class="lab">max mm</div></div>
         </div>
         <div id="band2" hidden>
-          <div class="band-head" style="margin-bottom:14px"><span class="display">Plane 2</span><span class="chip" id="chip2">—</span></div>
+          <div class="band-head" style="margin-bottom:14px"><span class="display">Mirror plane 2</span><span class="chip" id="chip2">—</span></div>
           <div class="band-row">
             <div><div class="num" id="b2-p95">—</div><div class="lab">95 % within mm</div></div>
           <div><div class="num sm" id="b2-med">—</div><div class="lab">median mm</div></div>
@@ -217,31 +249,11 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
         </div>
       </div>
 
-      <div class="blk" id="sec-place" hidden>
-        <h2>Placement</h2>
-        <div class="row">
-          <button class="btn btn-ghost btn-sm" id="rot-x" type="button" title="Rotate 90° about X (Z goes to Y). Plane 1 stays on YZ.">Rotate 90° about X</button>
-          <button class="btn btn-ghost btn-sm" id="flip-z" type="button" title="Turn 180° about Z (front and back swap). Plane 1 stays on YZ.">Flip 180° about Z</button>
-          <button class="btn btn-ghost btn-sm" id="auto-ext" type="button" title="Find the direction the part is extruded, swept or revolved along (inside the mirror plane) and turn it onto Z. Press again for the next candidate.">Auto-align extrusion axis</button>
-          <button class="btn btn-ghost btn-sm" id="pick" type="button" aria-pressed="false" title="Click a flat face or a round surface on the model: it is turned so that face's normal, or the round surface's axis, points along Z. Plane 1 stays on YZ.">Align to picked feature</button>
-          <button class="btn btn-ghost btn-sm" id="unpick" type="button" hidden>Clear alignment</button>
-        </div>
-        <div>
-          <div class="field-label" style="margin-bottom:6px">Origin</div>
-          <div class="choices" role="radiogroup" aria-label="Origin">
-            <label><input type="radio" name="origin" value="bbox" id="or-bbox" checked><span>Box centre</span></label>
-            <label><input type="radio" name="origin" value="min" id="or-min"><span>Box min</span></label>
-            <label><input type="radio" name="origin" value="centroid" id="or-cen"><span>Centroid</span></label>
-          </div>
-        </div>
-        <table class="ext" id="ext" aria-label="Extents after reorientation"></table>
-      </div>
 
       <div class="blk" id="sec-detail" hidden>
-        <h2>Details</h2>
+        <h2>Result</h2>
+        <table class="ext" id="ext" aria-label="Extents after reorientation"></table>
         <div class="mono" id="plane-eq"></div>
-        <div class="field-label">Plane 1 candidates</div>
-        <div class="cands" id="cands" role="radiogroup" aria-label="Plane 1 candidates"></div>
         <div class="caption" id="move-sum"></div>
         <details>
           <summary>Transform matrix (input → output)</summary>
@@ -406,7 +418,7 @@ function progress(stage, f) {
 }
 function setBusy(b) {
   st.busy = b;
-  document.querySelectorAll('.panel button, .panel input:not(#use-p1), .stage input, #save').forEach(el => { el.disabled = b; });
+  document.querySelectorAll('.panel button, .panel input, .stage input, #save').forEach(el => { el.disabled = b; });
   if (!b) $('#save').disabled = !st.an;
   $('#open-label').setAttribute('aria-disabled', b ? 'true' : 'false');
 }
@@ -653,10 +665,7 @@ function renderPlacement() {
 }
 function recompute(refit) {
   const second = st.p2on ? st.p2[st.sel] : null;
-  st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin, second, up: second ? null : st.up });
-  $('#unpick').hidden = !st.up || !!second;
-  $('#pick').disabled = st.busy || !!second;
-  $('#auto-ext').disabled = st.busy || !!second;
+  st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin, second, up: second || st.mode === 'auto' ? null : st.up });
   renderPlacement();
   updateGeometry(refit);
   setView(refit ? 'iso' : 'keep');
@@ -671,20 +680,10 @@ async function ensurePlane2() {
   } finally { endJob(); setBusy(false); }
 }
 async function selectCand(i) {
-  st.sel = i; st.up = null; st.ext = null; // a picked direction belongs to the previous plane
-  await ensurePlane2();
-  renderPlanes();
-  recompute(false);
+  // Step-2 results belong to the previous mirror plane: recompute them for the new one.
+  st.sel = i; st.up = null; st.ext = null; st.flats = null;
+  await applyMode(st.mode === 'pick' ? 'auto' : st.mode);
   if (G.heatOn) await setHeat(true);
-}
-async function togglePlane2(on) {
-  st.p2on = on;
-  if (!on && st.heatWhich === 2) { st.heatWhich = 1; document.querySelector('input[name="heat-which"][value="1"]').checked = true; }
-  await ensurePlane2();
-  renderPlanes();
-  recompute(false);
-  $('#heat-which').hidden = !on;
-  applyMaterial();
 }
 
 /* ---------- load + analyse */
@@ -698,10 +697,12 @@ async function analyseBuffer(buf, name, note) {
     const res = await eng.run('analyse', [copy], [copy.buffer], progress);
     const an = Object.assign(res, { tris });
     endJob();
-    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, up: null, ext: null, heat: {}, p2: {} });
+    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, up: null, ext: null, flats: null, heat: {}, p2: {} });
+    setMode('auto'); st.p2on = false; $('#heat-which').hidden = true; $('#next-opt').hidden = true;
+    showFlat(null);
     $('#file-name').textContent = name;
     $('#file-meta').textContent = `${fmtInt(tris.length / 9)} triangles` + (note ? ' · ' + note : '');
-    ['#sec-planes', '#sec-band', '#sec-place', '#sec-detail'].forEach(s => { $(s).hidden = false; });
+    ['#sec-align', '#sec-band', '#sec-detail'].forEach(s => { $(s).hidden = false; });
     setStatus(`Analysed in ${(an.ms / 1000).toFixed(1)} s.`);
     setBusy(false);
     await ensurePlane2();
@@ -747,34 +748,81 @@ $('#open-label').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.
 $('#open-label').addEventListener('click', e => { if (st.busy) e.preventDefault(); });
 $('#rot-x').addEventListener('click', () => { st.rx = (st.rx + 1) & 3; recompute(false); });
 $('#flip-z').addEventListener('click', () => { st.fz ^= 1; recompute(false); });
-function setPick(on) {
-  st.picking = on;
-  $('#pick').setAttribute('aria-pressed', on ? 'true' : 'false');
-  $('#pick').classList.toggle('btn-primary', on);
-  $('#gl').style.cursor = on ? 'crosshair' : '';
-  if (on) setStatus('Click a flat face or a round surface on the model. Esc cancels.');
+/* ---------- alignment step 2: what goes on Z (the one rotation the mirror plane leaves free) */
+function setMode(m) { st.mode = m; const r = document.querySelector(`input[name="align2"][value="${m}"]`); if (r) r.checked = true; }
+async function applyMode(mode, next) {
+  if (!st.an) return;
+  const prev = st.mode;
+  setMode(mode);
+  st.p2on = mode === 'plane2';
+  if (!st.p2on && st.heatWhich === 2) { st.heatWhich = 1; document.querySelector('input[name="heat-which"][value="1"]').checked = true; }
+  $('#heat-which').hidden = !st.p2on;
+  if (mode !== 'flat') showFlat(null);
+  if (mode !== 'pick') setPick(false);
+  if (!next) st.rx = 0;
+  let ok = true;
+  if (mode === 'auto') { st.up = null; setStatus('Z follows the longest direction of the part.'); }
+  else if (mode === 'plane2') { await ensurePlane2(); ok = !!st.p2[st.sel]; }
+  else if (mode === 'extrude') ok = await stepExtrude(next);
+  else if (mode === 'flat') ok = await stepFlat(next);
+  else if (mode === 'pick') { st.pickPrev = prev === 'pick' ? 'auto' : prev; setPick(true); }
+  if (!ok) return applyMode('auto');
+  renderPlanes();
+  recompute(false);
+  applyMaterial();
+  const n = mode === 'extrude' && st.ext ? st.ext.list.length : mode === 'flat' && st.flats ? 2 * st.flats.list.length : 0;
+  $('#next-opt').hidden = n < 2;
 }
-$('#pick').addEventListener('click', () => setPick(!st.picking));
-$('#unpick').addEventListener('click', () => { st.up = null; recompute(false); setStatus('Alignment cleared.'); });
-/* Repeated presses cycle through the candidate axes (strongest first). */
-$('#auto-ext').addEventListener('click', async () => {
-  if (!st.an || st.busy) return;
-  if (!st.ext) st.ext = { list: await eng.run('extrude', [st.sel]), i: -1 };
+async function stepExtrude(next) {
+  if (!st.ext) { setStatus('Looking for the extrusion axis …'); st.ext = { list: await eng.run('extrude', [st.sel]), i: -1 }; }
   const L = st.ext.list;
-  if (!L.length) { setStatus('No extrusion direction found: no side walls run along a common direction.', true); return; }
-  st.ext.i = (st.ext.i + 1) % L.length;
+  if (!L.length) { setStatus('No extrusion direction found: no side walls run along a common direction.', true); return false; }
+  st.ext.i = next ? (st.ext.i + 1) % L.length : 0;
   // The end with more surface goes up (seat post: saddle at +Z): centroid above the middle of the extent.
   const a = L[st.ext.i], d = a.dir, t = st.tris, m = st.an.mesh;
   let lo = Infinity, hi = -Infinity;
   for (let k = 0; k < t.length; k += 3) { const s2 = d[0] * t[k] + d[1] * t[k + 1] + d[2] * t[k + 2]; if (s2 < lo) lo = s2; if (s2 > hi) hi = s2; }
   const cen = [0, 1, 2].map(k => m.c0[k] + m.L * m.centroid[k]);
   const sg = d[0] * cen[0] + d[1] * cen[1] + d[2] * cen[2] < 0.5 * (lo + hi) ? -1 : 1;
-  st.up = a.dir.map(x => sg * x); st.rx = 0;
-  recompute(false);
-  setStatus(`Extrusion axis ${st.ext.i + 1} of ${L.length} on Z: ${(100 * a.share).toFixed(1)} % of the side-wall area runs along it.` +
-    (L.length > 1 ? ' Press again for the next candidate.' : ''));
-});
-window.addEventListener('keydown', e => { if (e.key === 'Escape' && st.picking) { setPick(false); setStatus('Picking cancelled.'); } });
+  st.up = d.map(x => sg * x);
+  setStatus(`Extrusion axis ${st.ext.i + 1} of ${L.length} on Z: ${(100 * a.share).toFixed(1)} % of the side-wall area runs along it.`);
+  return true;
+}
+async function stepFlat(next) {
+  if (!st.flats) { setStatus('Looking for flat faces …'); st.flats = { list: await eng.run('flats', [st.sel]), i: -1 }; }
+  const L = st.flats.list;
+  if (!L.length) { setStatus('No large flat face found whose normal lies in the mirror plane.', true); return false; }
+  // Options cycle: face 1 down, face 1 up, face 2 down, …
+  st.flats.i = next ? (st.flats.i + 1) % (2 * L.length) : 0;
+  const f = L[st.flats.i >> 1], down = !(st.flats.i & 1);
+  st.up = f.dir.map(x => (down ? -x : x)); // down: outward normal → −Z, the part sits on this face
+  showFlat(f.tris);
+  setStatus(`Flat face ${(st.flats.i >> 1) + 1} of ${L.length}, facing ${down ? 'down (−Z)' : 'up (+Z)'}: ${Math.round(f.area)} mm², flat to ${fmtLen(f.rms)} mm rms` +
+    (f.tilt > 0.05 ? `, normal ${f.tilt.toFixed(1)}° out of the mirror plane (projected)` : '') + '.');
+  return true;
+}
+function setPick(on) {
+  st.picking = on;
+  $('#gl').style.cursor = on ? 'crosshair' : '';
+  if (on) setStatus('Click a flat face or a round surface on the model. Esc cancels.');
+}
+document.querySelectorAll('input[name="align2"]').forEach(r => r.addEventListener('change', () => applyMode(r.value)));
+$('#next-opt').addEventListener('click', () => applyMode(st.mode, true));
+/* Highlight of the chosen flat face: a child of the part mesh, so it follows the pose animation. */
+function showFlat(tri) {
+  if (!G.renderer) return;
+  if (G.flat) { G.mesh.remove(G.flat); G.flat.geometry.dispose(); G.flat = null; }
+  if (tri) {
+    const t = st.tris, pos = new Float32Array(9 * tri.length);
+    for (let i = 0; i < tri.length; i++) pos.set(t.subarray(9 * tri[i], 9 * tri[i] + 9), 9 * i);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    G.flat = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: css('--accent'), side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    G.mesh.add(G.flat);
+  }
+  G.dirty = true;
+}
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && st.picking) { setPick(false); applyMode(st.pickPrev || 'auto'); setStatus('Picking cancelled.'); } });
 let downAt = null;
 $('#gl').addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
 $('#gl').addEventListener('pointerup', async e => {
@@ -789,17 +837,16 @@ $('#gl').addEventListener('pointerup', async e => {
   const u = [t[b + 3] - t[b], t[b + 4] - t[b + 1], t[b + 5] - t[b + 2]], v = [t[b + 6] - t[b], t[b + 7] - t[b + 1], t[b + 8] - t[b + 2]];
   const nr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], nl = Math.hypot(...nr) || 1;
   const f = await eng.run('feature', [[p.x, p.y, p.z], nr.map(x => x / nl)]);
-  setPick(false);
-  if (f.kind === 'none') { setStatus('No clear flat face or round surface there. Try the middle of a face.', true); return; }
+  if (f.kind === 'none') { setStatus('No clear flat face or round surface there. Try the middle of a face, or press Esc.', true); return; }
   const n1 = st.an.candidates[st.sel].n, par = Math.abs(f.dir[0] * n1[0] + f.dir[1] * n1[1] + f.dir[2] * n1[2]);
-  if (par > 0.97) { setStatus('That direction is perpendicular to the mirror plane, so it cannot be turned to Z without breaking YZ.', true); return; }
+  if (par > 0.97) { setStatus('That direction is perpendicular to the mirror plane, so it cannot go on Z without breaking YZ. Pick another, or press Esc.', true); return; }
+  setPick(false);
   const z = st.fr.R.slice(6, 9), sg = f.dir[0] * z[0] + f.dir[1] * z[1] + f.dir[2] * z[2] < 0 ? -1 : 1; // keep the side that is already up
   st.up = f.dir.map(x => sg * x); st.rx = 0;
   recompute(false);
   setStatus((f.kind === 'flat' ? 'Flat face normal' : 'Axis of the round surface') + ' now points along Z' + (par > 0.05 ? ` (projected into the mirror plane, ${(Math.asin(par) * 180 / Math.PI).toFixed(1)}° removed)` : '') + '.');
 });
 document.querySelectorAll('input[name="origin"]').forEach(r => r.addEventListener('change', () => { st.origin = r.value; recompute(false); }));
-$('#use-p2').addEventListener('change', e => { if (st.an) togglePlane2(e.target.checked); });
 $('#save').addEventListener('click', save);
 $('#copy').addEventListener('click', () => {
   const txt = $('#matrix').textContent;

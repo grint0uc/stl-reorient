@@ -8,10 +8,14 @@ Everything runs locally in the page; the analysis runs in a Web Worker so the pa
 
 - Symmetry score: P95 mirror deviation (95 % of the surface mirrors within this distance).
   ≤ 0.25 mm perfect, ≤ 1 mm good, ≤ 3 mm ok, above that weak.
-- Auto-align extrusion axis: finds the direction (inside the mirror plane) that the most side-wall area is
+- Alignment flow: (1) mirror plane → YZ, (2) one choice for what goes on Z: long axis, extrusion axis,
+  flat face (down or up), second mirror plane → XZ, or a picked feature; (3) 90° turns and origin.
+- Extrusion axis: finds the direction (inside the mirror plane) that the most side-wall area is
   perpendicular to, i.e. the extrude/sweep/revolve axis, and turns it onto Z with the larger end up.
   Press again to cycle through other candidates.
-- Align to picked feature: click a flat face (its normal) or a round surface (its axis) and it is turned onto Z,
+- Flat face: large connected regions lying on one plane (grouped by normal, then by offset, refit by PCA,
+  rejecting narrow strips such as single facet rows of a tessellated cylinder); highlighted on the model.
+- Picked feature: click a flat face (its normal) or a round surface (its axis) and it is turned onto Z,
   keeping the mirror plane on YZ.
 
 ## Algorithm (`symcore.js`)
