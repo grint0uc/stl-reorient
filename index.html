@@ -215,7 +215,6 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
             <div><div class="num sm" id="b2-max">—</div><div class="lab">max mm</div></div>
           </div>
         </div>
-        <p class="note" style="margin:0">Big number: 95 % of the surface mirrors onto itself within this distance (P95). Rated on it: ≤ 0.25 mm perfect, ≤ 1 mm good, ≤ 3 mm ok, above that weak.</p>
       </div>
 
       <div class="blk" id="sec-place" hidden>
@@ -235,7 +234,6 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
           </div>
         </div>
         <table class="ext" id="ext" aria-label="Extents after reorientation"></table>
-        <div class="caption" id="place-cap"></div>
       </div>
 
       <div class="blk" id="sec-detail" hidden>
@@ -642,12 +640,10 @@ function renderPlanes() {
   $('#leg-p2').hidden = !c2;
 }
 function renderPlacement() {
-  const e = st.fr.ext, p2 = st.fr.plane2;
+  const e = st.fr.ext;
   const rows = [['X', 'x', e[0]], ['Y', 'y', e[1]], ['Z', 'z', e[2]]];
   $('#ext').innerHTML = '<tr><th></th><td>min</td><td>max</td><td>size</td></tr>' +
     rows.map(([t, c, r]) => `<tr><th class="${c}">${t}</th><td>${fmtLen(r[0])}</td><td>${fmtLen(r[1])}</td><td>${fmtLen(r[1] - r[0])}</td></tr>`).join('');
-  $('#place-cap').textContent = (st.up && !p2 ? 'Z follows the picked feature. ' : '') + 'X = 0 is plane 1' + (p2 ? `, ${p2 === 'XZ' ? 'Y' : 'Z'} = 0 is plane 2 (${p2})` : '') +
-    '. Box min puts the free axes at their minimum, so those values are all positive.';
   const M = st.fr.M;
   const f = v => (v < 0 ? '−' : ' ') + Math.abs(v).toFixed(6);
   $('#matrix').textContent = [0, 1, 2, 3].map(i => [0, 1, 2, 3].map(j => f(M[4 * i + j])).join('  ')).join('\n');
