@@ -90,9 +90,11 @@ header.top {
 .check .s { font-size: 12.5px; color: var(--muted); }
 
 .band { background: var(--band-bg); color: var(--band-ink); border-top: 4px solid var(--rule); border-bottom: 4px solid var(--rule); padding: 18px 16px; display: grid; gap: 14px; }
-.band-row { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 10px; }
+.band-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; align-items: start; }
 .band .num { font-family: var(--font-display); font-weight: 700; font-size: 2.1rem; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.band .num.sm { font-size: 1.45rem; }
+.band .num { white-space: nowrap; }
+.band .num.sm { font-size: 1.7rem; }
+.band .num small { font-size: 0.5em; margin-left: 3px; color: color-mix(in srgb, var(--band-ink) 65%, transparent); }
 .band .lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: color-mix(in srgb, var(--band-ink) 65%, transparent); margin-top: 4px; }
 .band-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .band-head .display { font-size: 1.35rem; }
@@ -187,7 +189,6 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
   .work { grid-template-columns: 1fr; }
   .stage { order: -1; height: 58vh; min-height: 320px; border-bottom: 2px solid var(--rule); }
   .panel { border-right: 0; overflow: visible; }
-  .band-row { grid-template-columns: repeat(2, 1fr); }
   .brand .eyebrow { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
@@ -234,18 +235,18 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
       <div class="band" id="sec-band" hidden>
         <div class="band-head"><span class="display" id="band1-title">Mirror plane</span><span class="chip" id="chip1">—</span></div>
         <div class="band-row">
-          <div><div class="num" id="b1-p95">—</div><div class="lab">95 % within mm</div></div>
-          <div><div class="num sm" id="b1-med">—</div><div class="lab">median mm</div></div>
-          <div><div class="num sm" id="b1-match">—</div><div class="lab">≤ 1 mm</div></div>
-          <div><div class="num sm" id="b1-max">—</div><div class="lab">max mm</div></div>
+          <div title="How far a mirrored point lands from the real surface. 95 % of the surface is closer than this: lower is more symmetric."><div class="num" id="b1-p95">—</div><div class="lab">95 % of surface within</div></div>
+          <div title="Half of the surface mirrors closer than this."><div class="num sm" id="b1-med">—</div><div class="lab">Typical error</div></div>
+          <div title="Share of the surface whose mirror image lands within 1 mm of the surface."><div class="num sm" id="b1-match">—</div><div class="lab">Matches within 1 mm</div></div>
+          <div title="The single worst point, usually an asymmetric feature or a scan hole."><div class="num sm" id="b1-max">—</div><div class="lab">Worst point</div></div>
         </div>
         <div id="band2" hidden>
           <div class="band-head" style="margin-bottom:14px"><span class="display" id="band2-title">Mirror plane</span><span class="chip" id="chip2">—</span></div>
           <div class="band-row">
-            <div><div class="num" id="b2-p95">—</div><div class="lab">95 % within mm</div></div>
-          <div><div class="num sm" id="b2-med">—</div><div class="lab">median mm</div></div>
-          <div><div class="num sm" id="b2-match">—</div><div class="lab">≤ 1 mm</div></div>
-            <div><div class="num sm" id="b2-max">—</div><div class="lab">max mm</div></div>
+            <div title="How far a mirrored point lands from the real surface. 95 % of the surface is closer than this: lower is more symmetric."><div class="num" id="b2-p95">—</div><div class="lab">95 % of surface within</div></div>
+          <div title="Half of the surface mirrors closer than this."><div class="num sm" id="b2-med">—</div><div class="lab">Typical error</div></div>
+          <div title="Share of the surface whose mirror image lands within 1 mm of the surface."><div class="num sm" id="b2-match">—</div><div class="lab">Matches within 1 mm</div></div>
+            <div title="The single worst point, usually an asymmetric feature or a scan hole."><div class="num sm" id="b2-max">—</div><div class="lab">Worst point</div></div>
           </div>
         </div>
       </div>
@@ -750,16 +751,17 @@ function fillBand(i, c, title) {
   $(`#band${i === 1 ? '1' : '2'}-title`).textContent = title;
   const chip = $('#chip' + i);
   chip.className = 'chip ' + cls; chip.textContent = txt;
-  $(`#b${i}-match`).textContent = (100 * c.match).toFixed(1) + '%';
-  $(`#b${i}-med`).textContent = fmtShort(c.median);
-  $(`#b${i}-p95`).textContent = fmtShort(c.p95);
-  $(`#b${i}-max`).textContent = (c.capped ? '>' : '') + fmtShort(c.max);
+  const mm = v => `${v}<small>mm</small>`;
+  $(`#b${i}-match`).textContent = (100 * c.match).toFixed(1) + ' %';
+  $(`#b${i}-med`).innerHTML = mm(fmtShort(c.median));
+  $(`#b${i}-p95`).innerHTML = mm(fmtShort(c.p95));
+  $(`#b${i}-max`).innerHTML = mm((c.capped ? '>' : '') + fmtShort(c.max));
 }
 /* Symmetry numbers for the mirror planes in use; if none is used, the best one, labelled as unused. */
 function renderBand() {
   const used = st.slots.map((sl, k) => (sl.type === 'mirror' && st.cur[k] ? [k, st.cur[k].cand] : null)).filter(Boolean);
   if (used.length) fillBand(1, used[0][1], `Mirror plane · step ${used[0][0] + 1}`);
-  else fillBand(1, st.an.candidates[0], 'Best mirror plane · not used');
+  else fillBand(1, st.an.candidates[0], 'Best mirror plane (not used)');
   $('#band2').hidden = used.length < 2;
   if (used.length > 1) fillBand(2, used[1][1], `Mirror plane · step ${used[1][0] + 1}`);
   $('#heat-which').hidden = used.length < 2;
