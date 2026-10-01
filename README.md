@@ -8,8 +8,9 @@ Everything runs locally in the page; the analysis runs in a Web Worker so the pa
 
 - Symmetry score: P95 mirror deviation (95 % of the surface mirrors within this distance).
   ≤ 0.25 mm perfect, ≤ 1 mm good, ≤ 3 mm ok, above that weak.
-- Alignment flow: (1) mirror plane → YZ, (2) one choice for what goes on Z: long axis, extrusion axis,
-  flat face (down or up), second mirror plane → XZ, or a picked feature; (3) 90° turns and origin.
+- Alignment: two steps, each picks any feature and the axis it goes onto: mirror plane, extrusion axis,
+  flat face, long axis or a picked feature. Step 1 is exact; step 2 is searched perpendicular to step 1.
+  Planes keep their axis at 0. Every feature's candidates are browsed with the same ‹ › stepper.
 - Extrusion axis: finds the direction (inside the mirror plane) that the most side-wall area is
   perpendicular to, i.e. the extrude/sweep/revolve axis, and turns it onto Z with the larger end up.
   Press again to cycle through other candidates.

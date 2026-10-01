@@ -812,6 +812,7 @@ function toOriginal(cd, mesh, opt) {
 /* Best mirror plane perpendicular to c1 (its normal is locked ⊥ c1.n): 1-D sweep of the
    rotation about c1's normal, then the same robust ICP with that constraint. */
 async function secondPlane(an, c1, options) {
+  // c1: a candidate (locks to its normal) or { nN, unoriented } for any direction (normalised coords = same direction)
   const o = options || {};
   const tick = o.tick || (() => undefined), progress = o.progress || (() => {});
   const ctx = an.ctx, { mesh, kd, kdc, bvh, S, opt } = ctx;
@@ -922,6 +923,51 @@ function inPlaneAxis(mesh, n) {
   const w = Math.abs(c) >= Math.abs(s) ? [c, s] : [-s, c];
   const sg = w[0] < 0 ? -1 : 1;
   return norm3([0, 1, 2].map(k => sg * (w[0] * u[k] + w[1] * v[k])));
+}
+
+/* Long axis of the part: principal axis of the surface; with n, inside the plane ⊥ n (snapped to face normals). */
+function longAxis(mesh, n) {
+  return n ? inPlaneAxis(mesh, n) : norm3(eigSym3(mesh.cov)[0].vec);
+}
+
+/* Generic two-step orientation. spec.p / spec.s = { dir, axis (0 X, 1 Y, 2 Z), pin: {n, d} | null }.
+   Step 1 maps p.dir exactly onto its axis; step 2 maps s.dir, projected ⊥ p.dir, onto its axis (resid = the
+   angle that projection removed). A pin is a plane n·x = d whose axis coordinate becomes 0; other axes follow
+   spec.origin ('bbox' | 'min' | 'centroid'). Rotation only (det +1): nothing is mirrored. */
+function orient(an, spec) {
+  const mesh = an.mesh, tris = an.tris, P = spec.p, Sx = spec.s;
+  const d1 = norm3(P.dir);
+  const k = dot3(Sx.dir, d1);
+  const raw = [Sx.dir[0] - k * d1[0], Sx.dir[1] - k * d1[1], Sx.dir[2] - k * d1[2]];
+  if (Math.hypot(raw[0], raw[1], raw[2]) < 1e-6) throw new Error('Step 2 direction is parallel to step 1.');
+  const d2 = norm3(raw), resid = (Math.asin(Math.min(1, Math.abs(k) / Math.hypot(...Sx.dir))) * 180) / Math.PI;
+  const a1 = P.axis, a2 = Sx.axis, a3 = 3 - a1 - a2, rows = [];
+  rows[a1] = d1; rows[a2] = d2; rows[a3] = cross3(rows[(a3 + 1) % 3], rows[(a3 + 2) % 3]);
+  const R = [...rows[0], ...rows[1], ...rows[2]];
+  const cO = [0, 1, 2].map(i => mesh.c0[i] + mesh.L * mesh.centroid[i]);
+  let p0 = cO.slice();
+  const pinned = [false, false, false];
+  if (P.pin) { const e = dot3(P.pin.n, p0) - P.pin.d, m = dot3(P.pin.n, d1); p0 = p0.map((x, i) => x - (e / m) * d1[i]); pinned[a1] = true; }
+  if (Sx.pin) {
+    const m = dot3(Sx.pin.n, d2);
+    if (Math.abs(m) > 1e-6) { const e = dot3(Sx.pin.n, p0) - Sx.pin.d; p0 = p0.map((x, i) => x - (e / m) * d2[i]); pinned[a2] = true; }
+  }
+  const b = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
+  for (let i = 0; i < tris.length; i += 3) {
+    const x = tris[i] - p0[0], y = tris[i + 1] - p0[1], z = tris[i + 2] - p0[2];
+    for (let r = 0; r < 3; r++) {
+      const w = R[3 * r] * x + R[3 * r + 1] * y + R[3 * r + 2] * z;
+      if (w < b[2 * r]) b[2 * r] = w; if (w > b[2 * r + 1]) b[2 * r + 1] = w;
+    }
+  }
+  const cw = mulv(R, [cO[0] - p0[0], cO[1] - p0[1], cO[2] - p0[2]]);
+  const o = [0, 1, 2].map(r => pinned[r] ? 0 : spec.origin === 'min' ? b[2 * r] : spec.origin === 'centroid' ? cw[r] : 0.5 * (b[2 * r] + b[2 * r + 1]));
+  const Rp = mulv(R, p0), t = [-Rp[0] - o[0], -Rp[1] - o[1], -Rp[2] - o[2]];
+  return {
+    R, t, resid, pinned,
+    M: [R[0], R[1], R[2], t[0], R[3], R[4], R[5], t[1], R[6], R[7], R[8], t[2], 0, 0, 0, 1],
+    ext: [0, 1, 2].map(r => [b[2 * r] - o[r], b[2 * r + 1] - o[r]]),
+  };
 }
 
 /* Rigid transform (rotation, det +1, no mirroring) that puts the plane on YZ (x = 0).
@@ -1046,6 +1092,7 @@ function pickFeature(an, p, nrm, rFrac) {
    Each triangle votes, with weight area × (in-plane part of its normal)², for the direction ⊥ its normal;
    peaks of the smoothed 0.25° histogram are refined by least squares on the triangles near each peak. */
 function extrusionAxes(mesh, n) {
+  if (!n) return extrusionAxes3D(mesh);
   const B = tangentBasis(n[0], n[1], n[2]), u = [B[0], B[1], B[2]], v = [B[3], B[4], B[5]];
   const N = mesh.N, A = mesh.A, NB = 720, H = new Float64Array(NB), P = new Float32Array(mesh.n), Q = new Float32Array(mesh.n);
   let tot = 0;
@@ -1119,37 +1166,129 @@ function largestPiece(sel, V, A) {
   return sel.filter((t, i) => find(i) === best);
 }
 
-function flatPlanes(mesh, n) {
-  const B = tangentBasis(n[0], n[1], n[2]), u = [B[0], B[1], B[2]], v = [B[3], B[4], B[5]];
-  const N = mesh.N, A = mesh.A, V = mesh.V, T = mesh.n, NB = 720;
-  const th = new Float32Array(T), H = new Float64Array(NB), lim = Math.sin((15 * Math.PI) / 180);
-  for (let t = 0; t < T; t++) {
-    const x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2];
-    if (Math.abs(x * n[0] + y * n[1] + z * n[2]) > lim) { th[t] = -1; continue; }
-    let a = Math.atan2(x * v[0] + y * v[1] + z * v[2], x * u[0] + y * u[1] + z * u[2]);
-    if (a < 0) a += Math.PI;
-    if (a >= Math.PI) a -= Math.PI;
-    th[t] = a;
-    H[Math.min(NB - 1, Math.floor((a / Math.PI) * NB))] += A[t];
+/* Peak normal directions (sign folded) of the surface: in the plane ⊥ n when n is given, else over the sphere. */
+function normalPeaks(mesh, n, maxPeaks) {
+  const N = mesh.N, A = mesh.A, T = mesh.n, dirs = [];
+  if (n) {
+    const B = tangentBasis(n[0], n[1], n[2]), u = [B[0], B[1], B[2]], v = [B[3], B[4], B[5]];
+    const NB = 720, H = new Float64Array(NB), lim = Math.sin((15 * Math.PI) / 180);
+    for (let t = 0; t < T; t++) {
+      const x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2];
+      if (Math.abs(x * n[0] + y * n[1] + z * n[2]) > lim) continue;
+      let a = Math.atan2(x * v[0] + y * v[1] + z * v[2], x * u[0] + y * u[1] + z * u[2]);
+      if (a < 0) a += Math.PI;
+      if (a >= Math.PI) a -= Math.PI;
+      H[Math.min(NB - 1, Math.floor((a / Math.PI) * NB))] += A[t];
+    }
+    const sm = new Float64Array(NB);
+    for (let i = 0; i < NB; i++) for (let k = -3; k <= 3; k++) sm[i] += H[(i + k + NB) % NB] * Math.exp((-k * k) / 4);
+    const pk = [];
+    for (let i = 0; i < NB; i++) {
+      let m = sm[i] > 0;
+      for (let k = 1; k <= 6 && m; k++) if (sm[(i + k) % NB] > sm[i] || sm[(i - k + NB) % NB] > sm[i]) m = false;
+      if (m) pk.push(i);
+    }
+    pk.sort((a, b) => sm[b] - sm[a]);
+    for (const i of pk.slice(0, maxPeaks)) { const a0 = ((i + 0.5) / NB) * Math.PI; dirs.push([0, 1, 2].map(k => Math.cos(a0) * u[k] + Math.sin(a0) * v[k])); }
+    return dirs;
   }
-  const sm = new Float64Array(NB);
-  for (let i = 0; i < NB; i++) for (let k = -3; k <= 3; k++) sm[i] += H[(i + k + NB) % NB] * Math.exp(-k * k / 4);
-  const peaks = [];
-  for (let i = 0; i < NB; i++) {
-    let m = sm[i] > 0;
-    for (let k = 1; k <= 6 && m; k++) if (sm[(i + k) % NB] > sm[i] || sm[(i - k + NB) % NB] > sm[i]) m = false;
+  // 1° latitude/longitude bins of the upper hemisphere (normals folded to z ≥ 0).
+  const NT = 91, NP = 360, H = new Float64Array(NT * NP);
+  for (let t = 0; t < T; t++) {
+    let x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2];
+    if (z < 0) { x = -x; y = -y; z = -z; }
+    const it = Math.min(NT - 1, Math.round((Math.acos(Math.min(1, z)) * 180) / Math.PI));
+    let ph = Math.atan2(y, x); if (ph < 0) ph += 2 * Math.PI;
+    H[it * NP + (Math.floor((ph * 180) / Math.PI) % NP)] += A[t];
+  }
+  const sm = new Float64Array(NT * NP);
+  for (let i = 0; i < NT; i++) for (let j = 0; j < NP; j++) {
+    let sum = 0;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const ii = i + a; if (ii >= 0 && ii < NT) sum += H[ii * NP + ((j + b + NP) % NP)]; }
+    sm[i * NP + j] = sum;
+  }
+  const pk = [];
+  for (let i = 0; i < NT; i++) for (let j = 0; j < NP; j++) {
+    const v0 = sm[i * NP + j]; if (!(v0 > 0)) continue;
+    let m = true;
+    for (let a = -3; a <= 3 && m; a++) for (let b = -3; b <= 3 && m; b++) {
+      if (!a && !b) continue; const ii = i + a; if (ii < 0 || ii >= NT) continue;
+      if (sm[ii * NP + ((j + b + NP) % NP)] > v0) m = false;
+    }
+    if (m) pk.push(i * NP + j);
+  }
+  pk.sort((a, b) => sm[b] - sm[a]);
+  for (const k of pk) {
+    const th = ((Math.floor(k / NP)) * Math.PI) / 180, ph = (((k % NP) + 0.5) * Math.PI) / 180;
+    const d = [Math.sin(th) * Math.cos(ph), Math.sin(th) * Math.sin(ph), Math.cos(th)];
+    if (dirs.some(o => Math.abs(dot3(o, d)) > Math.cos((3 * Math.PI) / 180))) continue;
+    dirs.push(d);
+    if (dirs.length >= maxPeaks) break;
+  }
+  return dirs;
+}
+
+/* Unconstrained extrusion axis: directions on a Fibonacci hemisphere scored by the area of (a subsample of)
+   triangles whose normal is within 3° of perpendicular; peaks refined by least squares on all such walls. */
+function extrusionAxes3D(mesh) {
+  const N = mesh.N, A = mesh.A, T = mesh.n, step = Math.max(1, Math.ceil(T / 60000));
+  const sx = [], sy = [], sz = [], sw = [];
+  for (let t = 0; t < T; t += step) { sx.push(N[3 * t]); sy.push(N[3 * t + 1]); sz.push(N[3 * t + 2]); sw.push(A[t]); }
+  const ND = 2000, D = fibHemisphere(ND), sc = new Float64Array(ND), lim = Math.sin((3 * Math.PI) / 180);
+  for (let k = 0; k < ND; k++) {
+    const a = D[3 * k], b = D[3 * k + 1], c = D[3 * k + 2];
+    let s2 = 0;
+    for (let i = 0; i < sw.length; i++) if (Math.abs(sx[i] * a + sy[i] * b + sz[i] * c) < lim) s2 += sw[i];
+    sc[k] = s2;
+  }
+  const rad = 2.5 * Math.sqrt((2 * Math.PI) / ND), cr = Math.cos(rad), peaks = [];
+  for (let i = 0; i < ND; i++) {
+    let m = sc[i] > 0;
+    for (let j = 0; j < ND && m; j++) {
+      if (j === i) continue;
+      const dp = Math.abs(D[3 * i] * D[3 * j] + D[3 * i + 1] * D[3 * j + 1] + D[3 * i + 2] * D[3 * j + 2]);
+      if (dp >= cr && (sc[j] > sc[i] || (sc[j] === sc[i] && j < i))) m = false;
+    }
     if (m) peaks.push(i);
   }
-  peaks.sort((a, b) => sm[b] - sm[a]);
+  peaks.sort((a, b) => sc[b] - sc[a]);
+  const out = [];
+  for (const k of peaks.slice(0, 4)) {
+    let d = [D[3 * k], D[3 * k + 1], D[3 * k + 2]], share = 0;
+    for (let it = 0; it < 3; it++) {
+      const M = [0, 0, 0, 0, 0, 0, 0, 0, 0]; let w = 0;
+      for (let t = 0; t < T; t++) {
+        const x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2];
+        if (Math.abs(x * d[0] + y * d[1] + z * d[2]) > lim) continue;
+        const a = A[t]; w += a;
+        M[0] += a * x * x; M[1] += a * x * y; M[2] += a * x * z; M[4] += a * y * y; M[5] += a * y * z; M[8] += a * z * z;
+      }
+      if (!w) break;
+      M[3] = M[1]; M[6] = M[2]; M[7] = M[5];
+      d = norm3(eigSym3(M)[2].vec);
+      share = w / mesh.area;
+    }
+    if (out.some(o => Math.abs(dot3(o.dir, d)) > Math.cos((5 * Math.PI) / 180))) continue;
+    out.push({ dir: d, share });
+  }
+  out.sort((a, b) => b.share - a.share);
+  return out.filter(o => o.share >= 0.4 * (out[0] ? out[0].share : 0)).slice(0, 3);
+}
+
+/* Large flat regions. With n: only faces whose normal lies (nearly) ⊥ n, so they can be turned onto an axis
+   without disturbing an alignment along n. Without n: any direction. Triangles facing a peak direction are
+   grouped by plane offset; each group is split into vertex-connected pieces, refit as a plane (area-weighted
+   PCA) and kept if it is genuinely flat and wider than a facet row. Returns up to 6, largest first. */
+function flatPlanes(mesh, n) {
+  const N = mesh.N, A = mesh.A, V = mesh.V, T = mesh.n;
+  const peaks = normalPeaks(mesh, n, 12);
   const cen = mesh.centroid, tol = 0.0025, win = (2 * Math.PI) / 180, out = [];
-  for (const pk of peaks.slice(0, 12)) {
-    const a0 = ((pk + 0.5) / NB) * Math.PI, d0 = [0, 1, 2].map(k => Math.cos(a0) * u[k] + Math.sin(a0) * v[k]);
+  const cw = Math.cos(win);
+  for (const d0 of peaks) {
     // Offsets of the triangles facing this way, binned at the flatness tolerance.
     const idx = [], off = [];
     for (let t = 0; t < T; t++) {
-      if (th[t] < 0) continue;
-      let da = Math.abs(th[t] - a0); da = Math.min(da, Math.PI - da);
-      if (da > win) continue;
+      if (Math.abs(N[3 * t] * d0[0] + N[3 * t + 1] * d0[1] + N[3 * t + 2] * d0[2]) < cw) continue;
       const b = 9 * t;
       idx.push(t); off.push(d0[0] * (V[b] + V[b + 3] + V[b + 6]) / 3 + d0[1] * (V[b + 1] + V[b + 4] + V[b + 7]) / 3 + d0[2] * (V[b + 2] + V[b + 5] + V[b + 8]) / 3);
     }
@@ -1203,8 +1342,9 @@ function flatPlanes(mesh, n) {
   const L = mesh.L, total = mesh.area;
   return out.slice(0, 6).map(o => ({
     dir: o.dirN, // normalisation preserves directions
+    off: L * dot3(o.dirN, o.c) + dot3(o.dirN, mesh.c0), // plane dir·x = off, original units
     area: o.area * L * L, share: o.area / total, rms: o.rms * L,
-    tilt: (Math.asin(Math.min(1, Math.abs(dot3(o.dirN, n)))) * 180) / Math.PI,
+    tilt: n ? (Math.asin(Math.min(1, Math.abs(dot3(o.dirN, n)))) * 180) / Math.PI : 0,
     tris: Uint32Array.from(o.tris, t => mesh.src[t]),
   }));
 }
@@ -1212,6 +1352,7 @@ function flatPlanes(mesh, n) {
 /* Stateful wrapper so the heavy work can live in a Web Worker: every call returns { value, transfer }. */
 function engine() {
   let an = null;
+  const lockDir = l => (l == null ? null : typeof l === 'number' ? an.candidates[l].nN : l);
   return {
     async ping() { return { value: 'ok' }; },
     async analyse(tris, progress, tick) {
@@ -1220,14 +1361,19 @@ function engine() {
       const m = an.mesh;
       return { value: { mesh: { c0: m.c0, L: m.L, centroid: m.centroid, cov: m.cov, n: m.n, nOrig: m.nOrig }, candidates: an.candidates, ms: an.ms } };
     },
-    async second(i, progress, tick) { return { value: await secondPlane(an, an.candidates[i], { progress, tick }) }; },
+    async second(lock, progress, tick) {
+      const c1 = typeof lock === 'number' ? an.candidates[lock] : { nN: lock, unoriented: an.candidates[0].unoriented };
+      return { value: await secondPlane(an, c1, { progress, tick }) };
+    },
     async devmap(cand, progress, tick) {
       const v = await deviationMap(an, cand, { progress, tick });
       return { value: v, transfer: [v.buffer] };
     },
     async feature(p, nrm) { return { value: pickFeature(an, p, nrm) }; },
-    async extrude(i) { return { value: extrusionAxes(an.mesh, an.candidates[i].nN) }; },
-    async flats(i) { const v = flatPlanes(an.mesh, an.candidates[i].nN); return { value: v, transfer: v.map(p => p.tris.buffer) }; },
+    // lock: candidate index, a direction (search ⊥ it), or null (free).
+    async extrude(lock) { return { value: extrusionAxes(an.mesh, lockDir(lock)) }; },
+    async flats(lock) { const v = flatPlanes(an.mesh, lockDir(lock)); return { value: v, transfer: v.map(p => p.tris.buffer) }; },
+    async long(lock) { return { value: longAxis(an.mesh, lockDir(lock)) }; },
   };
 }
 
@@ -1312,7 +1458,7 @@ function rigid(tris, R, t) {
 
 const SymCore = {
   parseSTL, writeSTL, zipOne, crc32,
-  analyse, secondPlane, frame, transform, deviationMap, pickFeature, extrusionAxes, flatPlanes, engine,
+  analyse, secondPlane, frame, transform, deviationMap, pickFeature, extrusionAxes, flatPlanes, longAxis, orient, engine,
   seatPost, rotationXYZ, rigid,
   _internal: { prepareMesh, sampleSurface, KDTree, BVH, eigSym3, refinePlane, mirrorDistances, fibHemisphere, closestPtTri, CP },
 };
