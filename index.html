@@ -222,6 +222,7 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
         <div class="row">
           <button class="btn btn-ghost btn-sm" id="rot-x" type="button" title="Rotate 90° about X (Z goes to Y). Plane 1 stays on YZ.">Rotate 90° about X</button>
           <button class="btn btn-ghost btn-sm" id="flip-z" type="button" title="Turn 180° about Z (front and back swap). Plane 1 stays on YZ.">Flip 180° about Z</button>
+          <button class="btn btn-ghost btn-sm" id="auto-ext" type="button" title="Find the direction the part is extruded, swept or revolved along (inside the mirror plane) and turn it onto Z. Press again for the next candidate.">Auto-align extrusion axis</button>
           <button class="btn btn-ghost btn-sm" id="pick" type="button" aria-pressed="false" title="Click a flat face or a round surface on the model: it is turned so that face's normal, or the round surface's axis, points along Z. Plane 1 stays on YZ.">Align to picked feature</button>
           <button class="btn btn-ghost btn-sm" id="unpick" type="button" hidden>Clear alignment</button>
         </div>
@@ -655,6 +656,7 @@ function recompute(refit) {
   st.fr = S.frame(st.an, st.an.candidates[st.sel], { rx: st.rx, fz: st.fz, origin: st.origin, second, up: second ? null : st.up });
   $('#unpick').hidden = !st.up || !!second;
   $('#pick').disabled = st.busy || !!second;
+  $('#auto-ext').disabled = st.busy || !!second;
   renderPlacement();
   updateGeometry(refit);
   setView(refit ? 'iso' : 'keep');
@@ -669,7 +671,7 @@ async function ensurePlane2() {
   } finally { endJob(); setBusy(false); }
 }
 async function selectCand(i) {
-  st.sel = i; st.up = null; // a picked direction belongs to the previous plane
+  st.sel = i; st.up = null; st.ext = null; // a picked direction belongs to the previous plane
   await ensurePlane2();
   renderPlanes();
   recompute(false);
@@ -696,7 +698,7 @@ async function analyseBuffer(buf, name, note) {
     const res = await eng.run('analyse', [copy], [copy.buffer], progress);
     const an = Object.assign(res, { tris });
     endJob();
-    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, up: null, heat: {}, p2: {} });
+    Object.assign(st, { tris, name, an, sel: 0, rx: 0, fz: 0, up: null, ext: null, heat: {}, p2: {} });
     $('#file-name').textContent = name;
     $('#file-meta').textContent = `${fmtInt(tris.length / 9)} triangles` + (note ? ' · ' + note : '');
     ['#sec-planes', '#sec-band', '#sec-place', '#sec-detail'].forEach(s => { $(s).hidden = false; });
@@ -754,6 +756,24 @@ function setPick(on) {
 }
 $('#pick').addEventListener('click', () => setPick(!st.picking));
 $('#unpick').addEventListener('click', () => { st.up = null; recompute(false); setStatus('Alignment cleared.'); });
+/* Repeated presses cycle through the candidate axes (strongest first). */
+$('#auto-ext').addEventListener('click', async () => {
+  if (!st.an || st.busy) return;
+  if (!st.ext) st.ext = { list: await eng.run('extrude', [st.sel]), i: -1 };
+  const L = st.ext.list;
+  if (!L.length) { setStatus('No extrusion direction found: no side walls run along a common direction.', true); return; }
+  st.ext.i = (st.ext.i + 1) % L.length;
+  // The end with more surface goes up (seat post: saddle at +Z): centroid above the middle of the extent.
+  const a = L[st.ext.i], d = a.dir, t = st.tris, m = st.an.mesh;
+  let lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < t.length; k += 3) { const s2 = d[0] * t[k] + d[1] * t[k + 1] + d[2] * t[k + 2]; if (s2 < lo) lo = s2; if (s2 > hi) hi = s2; }
+  const cen = [0, 1, 2].map(k => m.c0[k] + m.L * m.centroid[k]);
+  const sg = d[0] * cen[0] + d[1] * cen[1] + d[2] * cen[2] < 0.5 * (lo + hi) ? -1 : 1;
+  st.up = a.dir.map(x => sg * x); st.rx = 0;
+  recompute(false);
+  setStatus(`Extrusion axis ${st.ext.i + 1} of ${L.length} on Z: ${(100 * a.share).toFixed(1)} % of the side-wall area runs along it.` +
+    (L.length > 1 ? ' Press again for the next candidate.' : ''));
+});
 window.addEventListener('keydown', e => { if (e.key === 'Escape' && st.picking) { setPick(false); setStatus('Picking cancelled.'); } });
 let downAt = null;
 $('#gl').addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });

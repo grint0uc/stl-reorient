@@ -184,5 +184,17 @@ console.log('# second plane (locked perpendicular to plane 1)');
   check(s2.match < 0.97, 'seat post: plane 2 reported worse than plane 1');
 }
 
+console.log('# extrusion axis (in the mirror plane)');
+for (const [o, seed] of [[{}, 81], [{ head: 0.5 }, 82], [{ seg: 360, nz: 120 }, 83]]) {
+  const p = posed(S.seatPost(o), seed);
+  const E = S.engine(); await E.analyse(p.tris);
+  const ax = (await E.extrude(0)).value;
+  // tube axis = posed local Z
+  let a = seed * 2654435761 >>> 0; const r = () => ((a = (a * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const R = S.rotationXYZ(r() * 2 * Math.PI, (r() - 0.5) * Math.PI, r() * 2 * Math.PI), z = [R[2], R[5], R[8]];
+  const ang = deg(Math.acos(Math.min(1, Math.abs(ax[0].dir[0] * z[0] + ax[0].dir[1] * z[1] + ax[0].dir[2] * z[2]))));
+  check(ang < 0.01, `${JSON.stringify(o)}: axis 1 is ${ang.toExponential(2)}° from the tube axis (${(100 * ax[0].share).toFixed(1)} % of side walls, ${ax.length} candidate(s))`);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

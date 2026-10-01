@@ -1041,6 +1041,61 @@ function pickFeature(an, p, nrm, rFrac) {
   return { kind: 'none', count };
 }
 
+/* Extrusion / sweep / revolve axis inside the mirror plane: the in-plane direction that the most side-wall
+   area is perpendicular to (a tube's wall normals all point radially, never along its axis).
+   Each triangle votes, with weight area × (in-plane part of its normal)², for the direction ⊥ its normal;
+   peaks of the smoothed 0.25° histogram are refined by least squares on the triangles near each peak. */
+function extrusionAxes(mesh, n) {
+  const B = tangentBasis(n[0], n[1], n[2]), u = [B[0], B[1], B[2]], v = [B[3], B[4], B[5]];
+  const N = mesh.N, A = mesh.A, NB = 720, H = new Float64Array(NB), P = new Float32Array(mesh.n), Q = new Float32Array(mesh.n);
+  let tot = 0;
+  for (let t = 0; t < mesh.n; t++) {
+    const x = N[3 * t], y = N[3 * t + 1], z = N[3 * t + 2];
+    const p = x * u[0] + y * u[1] + z * u[2], q = x * v[0] + y * v[1] + z * v[2];
+    P[t] = p; Q[t] = q;
+    const w = A[t] * (p * p + q * q);
+    tot += w;
+    let th = Math.atan2(-p, q);
+    if (th < 0) th += Math.PI;
+    H[Math.min(NB - 1, Math.floor((th / Math.PI) * NB))] += w;
+  }
+  const G = [], sig = 4;
+  for (let k = -12; k <= 12; k++) G.push(Math.exp((-k * k) / (2 * sig * sig)));
+  const sm = new Float64Array(NB);
+  for (let i = 0; i < NB; i++) { let s2 = 0; for (let k = -12; k <= 12; k++) s2 += H[(i + k + NB) % NB] * G[k + 12]; sm[i] = s2; }
+  const peaks = [];
+  for (let i = 0; i < NB; i++) {
+    let m = sm[i] > 0;
+    for (let k = 1; k <= 16 && m; k++) if (sm[(i + k) % NB] > sm[i] || sm[(i - k + NB) % NB] > sm[i]) m = false;
+    if (m) peaks.push(i);
+  }
+  peaks.sort((a, b) => sm[b] - sm[a]);
+  const out = [];
+  for (const i of peaks.slice(0, 3)) {
+    let th = ((i + 0.5) / NB) * Math.PI, share = 0;
+    for (let it = 0; it < 3; it++) { // least squares on the walls within ±3° of the current direction
+      const c = Math.cos(th), sn = Math.sin(th), lim = Math.sin((3 * Math.PI) / 180);
+      let a11 = 0, a12 = 0, a22 = 0, w3 = 0;
+      for (let t = 0; t < mesh.n; t++) {
+        const p = P[t], q = Q[t], r2 = p * p + q * q;
+        if (r2 < 1e-6 || Math.abs(c * p + sn * q) > lim * Math.sqrt(r2)) continue;
+        a11 += A[t] * p * p; a12 += A[t] * p * q; a22 += A[t] * q * q; w3 += A[t] * r2;
+      }
+      if (!w3) break;
+      share = w3 / tot;
+      // direction minimising Σ A (a·n)²: eigenvector of the smaller eigenvalue of [[a11,a12],[a12,a22]]
+      const phi = 0.5 * Math.atan2(2 * a12, a11 - a22) + Math.PI / 2;
+      th = phi;
+    }
+    const c = Math.cos(th), sn = Math.sin(th);
+    const d = norm3([c * u[0] + sn * v[0], c * u[1] + sn * v[1], c * u[2] + sn * v[2]]);
+    if (out.some(o => Math.abs(dot3(o.dir, d)) > Math.cos((5 * Math.PI) / 180))) continue;
+    out.push({ dir: d, share });
+  }
+  out.sort((a, b) => b.share - a.share); // refined share, not raw histogram height
+  return out.filter(o => o.share >= 0.4 * (out[0] ? out[0].share : 0));
+}
+
 /* Stateful wrapper so the heavy work can live in a Web Worker: every call returns { value, transfer }. */
 function engine() {
   let an = null;
@@ -1058,6 +1113,7 @@ function engine() {
       return { value: v, transfer: [v.buffer] };
     },
     async feature(p, nrm) { return { value: pickFeature(an, p, nrm) }; },
+    async extrude(i) { return { value: extrusionAxes(an.mesh, an.candidates[i].nN) }; },
   };
 }
 
@@ -1142,7 +1198,7 @@ function rigid(tris, R, t) {
 
 const SymCore = {
   parseSTL, writeSTL, zipOne, crc32,
-  analyse, secondPlane, frame, transform, deviationMap, pickFeature, engine,
+  analyse, secondPlane, frame, transform, deviationMap, pickFeature, extrusionAxes, engine,
   seatPost, rotationXYZ, rigid,
   _internal: { prepareMesh, sampleSurface, KDTree, BVH, eigSym3, refinePlane, mirrorDistances, fibHemisphere, closestPtTri, CP },
 };
