@@ -510,7 +510,7 @@ function buildAxes() {
   while (g.children.length) { const o = g.children.pop(); o.geometry && o.geometry.dispose(); o.material && (o.material.map && o.material.map.dispose(), o.material.dispose()); }
   const e = st.fr.ext;
   const span = Math.max(e[0][1] - e[0][0], e[1][1] - e[1][0], e[2][1] - e[2][0]);
-  const L = 0.62 * span;
+  const L = 0.42 * span; // short enough to stay inside the framed view
   [['X', [1, 0, 0], '--ax-x'], ['Y', [0, 1, 0], '--ax-y'], ['Z', [0, 0, 1], '--ax-z']].forEach(([t, d, v]) => {
     const col = css(v);
     const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(d[0] * L, d[1] * L, d[2] * L)]);
@@ -552,6 +552,7 @@ function updateGeometry(fromInput) {
     G.geom.computeBoundingSphere();
     G.geomFor = st.tris;
   }
+  st.fit = null;
   poseTo(st.fr.M, fromInput);
   const e = st.fr.ext, k = 1.14;
   const sx = (e[0][1] - e[0][0]) * k || 1, sy = (e[1][1] - e[1][0]) * k || 1, sz = (e[2][1] - e[2][0]) * k || 1;
@@ -577,22 +578,49 @@ function syncPlaneVis() {
   });
   G.dirty = true;
 }
+/* Sample of the part's vertices in the output frame, used to fit the camera exactly. */
+function fitPoints() {
+  const t = st.tris, M = st.fr.M, n = t.length / 3, step = Math.max(1, Math.floor(n / 60000));
+  const out = new Float32Array(3 * Math.ceil(n / step));
+  let o = 0;
+  for (let v = 0; v < n; v += step) {
+    const x = t[3 * v], y = t[3 * v + 1], z = t[3 * v + 2];
+    out[o++] = M[0] * x + M[1] * y + M[2] * z + M[3];
+    out[o++] = M[4] * x + M[5] * y + M[6] * z + M[7];
+    out[o++] = M[8] * x + M[9] * y + M[10] * z + M[11];
+  }
+  return out;
+}
+const FILL = 0.8; // the part spans this fraction of the window in its tighter direction
 function setView(kind) {
   if (!G.renderer || !G.geom.boundingSphere) return;
-  // Frame the union of part, planes and axis arrows (drawn from the origin).
-  const e = st.fr.ext, span = Math.max(e[0][1] - e[0][0], e[1][1] - e[1][0], e[2][1] - e[2][0]), ax = 0.66 * span;
-  const mx = 0.07 * (e[0][1] - e[0][0]), my = 0.07 * (e[1][1] - e[1][0]), mz = 0.07 * (e[2][1] - e[2][0]);
-  const lo = [Math.min(e[0][0] - mx, 0), Math.min(e[1][0] - my, 0), Math.min(e[2][0] - mz, 0)];
-  const hi = [Math.max(e[0][1] + mx, ax), Math.max(e[1][1] + my, ax), Math.max(e[2][1] + mz, ax)];
-  // Views orbit the origin; radius = farthest corner of that box from the origin.
-  const c = new THREE.Vector3(0, 0, 0);
-  const r = 0.85 * Math.hypot(Math.max(-lo[0], hi[0]), Math.max(-lo[1], hi[1]), Math.max(-lo[2], hi[2])) || 1;
-  const dist = (r / Math.sin((Math.min(G.camera.fov, G.camera.fov * G.camera.aspect) * Math.PI) / 360)) * 1.02;
   const dirs = { iso: [1, -1.25, 0.8], x: [1, 0, 0], y: [0, -1, 0], z: [0, -0.002, 1] };
-  const d = kind === 'keep' ? G.camera.position.clone().sub(G.controls.target).normalize() : new THREE.Vector3(...dirs[kind]).normalize();
-  G.camera.position.copy(c).addScaledVector(d, dist);
+  const d3 = kind === 'keep' ? G.camera.position.clone().sub(G.controls.target).normalize() : new THREE.Vector3(...dirs[kind]).normalize();
+  const d = [d3.x, d3.y, d3.z];
+  // Camera basis (up = +Z, as the camera itself), looking at the origin from d·t.
+  const fw = [-d[0], -d[1], -d[2]];
+  let rt = [fw[1] * 1 - fw[2] * 0, fw[2] * 0 - fw[0] * 1, 0];            // fw × (0,0,1)
+  const rl = Math.hypot(rt[0], rt[1]) || 1; rt = [rt[0] / rl, rt[1] / rl, 0];
+  const up = [rt[1] * fw[2] - rt[2] * fw[1], rt[2] * fw[0] - rt[0] * fw[2], rt[0] * fw[1] - rt[1] * fw[0]]; // right × fw... (up vector)
+  const P = st.fit || (st.fit = fitPoints());
+  const tv = Math.tan((G.camera.fov * Math.PI) / 360), th = tv * G.camera.aspect;
+  const pr = [], pu = [], pd = [];
+  let maxD = -Infinity;
+  for (let i = 0; i < P.length; i += 3) {
+    const x = P[i], y = P[i + 1], z = P[i + 2];
+    pr.push(x * rt[0] + y * rt[1] + z * rt[2]);
+    pu.push(x * up[0] + y * up[1] + z * up[2]);
+    const q = x * d[0] + y * d[1] + z * d[2]; pd.push(q); if (q > maxD) maxD = q;
+  }
+  // Largest normalised screen offset of any point at camera distance t (perspective); shrinks as t grows.
+  const spread = t => { let m = 0; for (let i = 0; i < pr.length; i++) { const z = t - pd[i]; const a = Math.max(Math.abs(pr[i]) / (z * th), Math.abs(pu[i]) / (z * tv)); if (a > m) m = a; } return m; };
+  let lo = maxD + 1e-6 * (1 + Math.abs(maxD)), hi = Math.max(lo * 2, 1);
+  while (spread(hi) > FILL && hi < 1e12) hi *= 2;
+  for (let k = 0; k < 40; k++) { const mid = 0.5 * (lo + hi); if (spread(mid) > FILL) lo = mid; else hi = mid; }
+  const dist = hi;
+  G.camera.position.set(d[0] * dist, d[1] * dist, d[2] * dist);
   G.camera.near = dist / 1000; G.camera.far = dist * 20; G.camera.updateProjectionMatrix();
-  G.controls.target.copy(c);
+  G.controls.target.set(0, 0, 0);
   G.controls.update();
   G.dirty = true;
 }
