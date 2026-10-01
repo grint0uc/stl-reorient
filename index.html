@@ -228,7 +228,6 @@ pre.mono { margin: 8px 0; padding: 10px; border: 2px solid var(--line); backgrou
             <label><input type="radio" name="origin" value="min" id="or-min"><span>Box min</span></label>
             <label><input type="radio" name="origin" value="centroid" id="or-cen"><span>Centroid</span></label>
           </div>
-          <div class="caption">Planes you align to keep their axis at 0; the other axes use this.</div>
         </div>
       </div>
 
@@ -739,7 +738,7 @@ function renderSlots() {
     const resid = k && st.fr && st.fr.resid > 0.05 ? `<div class="warn-line">${st.fr.resid.toFixed(1)}° off: step 1 leaves only the rotation about its axis free.</div>` : '';
     el.innerHTML = `<div class="step-h"><span class="step-n">${k + 1}</span><span class="step-t">${k ? 'Second alignment' : 'First alignment'}</span><span class="step-tag">${k ? 'Across step 1' : 'Exact'}</span></div>
       <div class="types" role="radiogroup" aria-label="Feature for step ${k + 1}">${types}</div>
-      <div class="detail"><div class="caption">${T.desc}</div>${stepper}
+      <div class="detail">${stepper}
         ${sl.type === 'pick' ? `<div class="row"><button type="button" class="btn btn-sm ${st.picking === k ? 'btn-primary' : 'btn-ghost'}" data-k="${k}" data-pick="1">${st.picking === k ? 'Click the model… (Esc cancels)' : 'Pick on model'}</button></div>` : ''}
         <div class="onto"><span class="field-label">${T.plane ? 'Becomes plane' : 'Points along'}</span><div class="choices" role="radiogroup">${onto}</div>
           <button type="button" class="btn btn-ghost btn-sm" data-k="${k}" data-rev="1">${rev}</button></div>
